@@ -26,32 +26,26 @@ export default function Validacion() {
     }
 
     try {
-      // Como PostgREST permite .ilike() en UUIDs usando text casting:
-      const { data, error: err } = await supabase
-        .from('pagos')
-        .select('*, alumnos(nombre_completo)')
-        .ilike('id', `${searchCode}%`)
-        .limit(1)
-        .single()
+      const { data, error: err } = await supabase.rpc('validar_recibo_publico', {
+        codigo_busqueda: searchCode
+      })
 
-      if (err) {
-        if (err.code === 'PGRST116') {
-          setResultado(false) // No encontrado
-        } else {
-          // Fallback manual en caso de que supabase postgrest falle el cast ilike
-          const { data: allData } = await supabase.from('pagos').select('*, alumnos(nombre_completo)')
-          const found = allData?.find(p => p.id.toUpperCase().startsWith(searchCode))
-          if (found) {
-            setResultado(found)
-          } else {
-            setResultado(false)
-          }
-        }
+      if (err) throw err
+
+      if (data && data.valido) {
+        setResultado({
+          alumnos: { nombre_completo: data.alumno_nombre },
+          fecha_pago: data.fecha_pago,
+          monto: data.monto,
+          mes_correspondiente: data.mes,
+          año_correspondiente: data.anio
+        })
       } else {
-        setResultado(data)
+        setResultado(false)
       }
     } catch (e) {
-      setError('Ocurrió un error general.')
+      console.error(e)
+      setError('Ocurrió un error al buscar en la base de datos.')
     }
 
     setLoading(false)
