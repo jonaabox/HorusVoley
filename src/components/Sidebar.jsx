@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Users, CreditCard, BarChart3, ClipboardList, Settings, LogOut, Megaphone } from 'lucide-react'
+import { LayoutDashboard, Users, CreditCard, BarChart3, ClipboardList, Settings, LogOut, Megaphone, SearchCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import logo from '../IMG_6191-removebg-preview.png'
 
@@ -10,6 +10,7 @@ const navItems = [
   { to: '/pagos',       icon: CreditCard,      label: 'Pagos'         },
   { to: '/reportes',    icon: BarChart3,       label: 'Reportes'      },
   { to: '/campanas',    icon: Megaphone,        label: 'Campañas'      },
+  { to: '/validar',     icon: SearchCheck,      label: 'Validar Recibo'},
 ]
 
 export default function Sidebar() {
