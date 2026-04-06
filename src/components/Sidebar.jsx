@@ -13,7 +13,7 @@ const navItems = [
   { to: '/validar',     icon: SearchCheck,      label: 'Validar Recibo'},
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ onMobileClose }) {
   const { signOut } = useAuth()
   const navigate    = useNavigate()
 
@@ -23,21 +23,22 @@ export default function Sidebar() {
   }
 
   return (
-    <aside className="w-64 min-h-screen bg-primary-950 flex flex-col">
+    <aside className="w-64 h-full bg-primary-950 flex flex-col overflow-y-auto">
       {/* Logo */}
-      <div className="flex flex-col items-center py-8 px-4 border-b border-primary-800">
-        <img src={logo} alt="Horus Voley" className="h-20 w-20 object-contain" />
+      <div className="flex flex-col items-center py-6 px-4 border-b border-primary-800 shrink-0">
+        <img src={logo} alt="Horus Voley" className="h-16 w-16 md:h-20 md:w-20 object-contain" />
         <h1 className="mt-3 text-white font-bold text-lg leading-tight text-center">Vóley Control</h1>
         <p className="text-primary-300 text-xs">Horus Voley Academy</p>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-6 space-y-1">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
         {navItems.map(({ to, icon: Icon, label }) => (
           <NavLink
             key={to}
             to={to}
             end={to === '/'}
+            onClick={onMobileClose}
             className={({ isActive }) =>
               `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 ${
                 isActive
@@ -53,9 +54,10 @@ export default function Sidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="px-3 pb-6 space-y-1">
+      <div className="px-3 pb-6 space-y-1 shrink-0">
         <NavLink
           to="/configuracion"
+          onClick={onMobileClose}
           className={({ isActive }) =>
             `flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 ${
               isActive
@@ -68,7 +70,10 @@ export default function Sidebar() {
           Configuración
         </NavLink>
         <button
-          onClick={handleSignOut}
+          onClick={() => {
+            onMobileClose?.()
+            handleSignOut()
+          }}
           className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-primary-300 hover:bg-red-900/40 hover:text-red-300 transition-all duration-150"
         >
           <LogOut size={18} />
