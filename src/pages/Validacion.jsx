@@ -130,6 +130,17 @@ export default function Validacion() {
             </div>
           )}
         </div>
+        
+        {/* Botón Volver */}
+        <div className="mt-6 text-center">
+          <a
+            href="/HorusVoley/login"
+            className="inline-flex items-center justify-center gap-2 text-sm font-medium text-primary-600 hover:text-primary-800 transition-colors"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+            Volver al Inicio de Sesión
+          </a>
+        </div>
       </div>
     </div>
   )
