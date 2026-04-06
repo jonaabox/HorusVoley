@@ -10,12 +10,14 @@ import Pagos from './pages/Pagos'
 import Reportes from './pages/Reportes'
 import Configuracion from './pages/Configuracion'
 import Campanas from './pages/Campanas'
+import Validacion from './pages/Validacion'
 
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
+          <Route path="/validar" element={<Validacion />} />
           <Route path="/login" element={<Login />} />
           <Route
             path="/"
