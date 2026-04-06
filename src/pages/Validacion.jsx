@@ -130,15 +130,6 @@ export default function Validacion() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-10 px-4">
       <div className="w-full max-w-lg relative">
-        {/* Botón Volver dinámico */}
-        <button
-          onClick={() => navigate(user ? '/' : '/login')}
-          className="absolute -top-12 left-0 flex items-center gap-2 text-sm font-medium text-gray-500 hover:text-primary-800 transition-colors"
-        >
-          <ArrowLeft size={16} />
-          {user ? 'Volver al Sistema' : 'Volver a Iniciar Sesión'}
-        </button>
-
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-primary-950">Vóley Control</h1>
           <p className="text-gray-500 mt-2">Consulta Pública de Recibos y Cuotas</p>
@@ -274,6 +265,17 @@ export default function Validacion() {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Botón Volver Dinámico Abajo */}
+        <div className="mt-8 text-center pb-8">
+          <button
+            onClick={() => navigate(user ? '/' : '/login')}
+            className="inline-flex items-center justify-center gap-2 text-sm font-medium text-gray-500 hover:text-primary-800 transition-colors bg-white px-5 py-2.5 rounded-full shadow-sm border border-gray-200"
+          >
+            <ArrowLeft size={16} />
+            {user ? 'Volver al Sistema' : 'Volver a Iniciar Sesión'}
+          </button>
         </div>
       </div>
     </div>
