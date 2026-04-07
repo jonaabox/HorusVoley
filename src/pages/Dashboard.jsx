@@ -64,6 +64,13 @@ function DeudorRow({ alumno }) {
   const totalMeses = alumno.mesesDeuda.length
   const tieneVencidos = alumno.mesesDeuda.some(m => m.vencido)
 
+  // Formato seguro para WhatsApp Paraguay (removiendo el 0 inicial del 09...)
+  let numeroLimpio = alumno.telefono?.replace(/\D/g, '') || ''
+  if (numeroLimpio.startsWith('0')) {
+    numeroLimpio = numeroLimpio.substring(1)
+  }
+  const waLink = `https://wa.me/595${numeroLimpio}?text=${encodeURIComponent(`¡Hola ${alumno.nombre_completo}! 👋\nTe escribimos de *Vóley Control - Horus Academy*, para recordarte cariñosamente que tienes cuota(s) pendiente(s) de pago (${totalMeses} mes(es)).\nPor favor, ponte al día para seguir disfrutando sin problemas. ¡Muchas gracias!`)}`
+
   return (
     <li className={`border-b border-gray-50 last:border-0 ${tieneVencidos ? 'bg-red-50/50' : 'bg-yellow-50/30'}`}>
       {/* Fila principal */}
@@ -117,14 +124,14 @@ function DeudorRow({ alumno }) {
 
             {/* Redes o Whatsapp batch simulado */}
             <a
-              href={`https://wa.me/595${alumno.telefono?.replace(/\D/g, '') || ''}?text=${encodeURIComponent(`¡Hola ${alumno.nombre_completo}! 👋\nTe escribimos de *Vóley Control - Horus Academy*, para recordarte cariñosamente que tienes cuota(s) pendiente(s) de pago (${totalMeses} mes(es)).\nPor favor, ponte al día para seguir disfrutando sin problemas. ¡Muchas gracias!`)}`}
+              href={waLink}
               target="_blank"
               rel="noreferrer"
               className="inline-flex max-w-fit items-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
               onClick={(e) => {
-                if (!alumno.telefono) {
+                if (!alumno.telefono || numeroLimpio.length < 8) {
                   e.preventDefault()
-                  alert('Este alumno no tiene un número de teléfono registrado.')
+                  alert('Este alumno no tiene un número de teléfono válido registrado.')
                 }
               }}
             >
@@ -159,7 +166,7 @@ export default function Dashboard() {
 
     // Alumnos activos + todos los pagos
     const [{ data: alumnosActivos }, { data: todosPagos }] = await Promise.all([
-      supabase.from('alumnos').select('id, nombre_completo, frecuencia, fecha_inscripcion').eq('estado', 'activo'),
+      supabase.from('alumnos').select('id, nombre_completo, frecuencia, fecha_inscripcion, telefono').eq('estado', 'activo'),
       supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago'),
     ])
 
