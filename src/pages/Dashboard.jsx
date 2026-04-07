@@ -69,7 +69,16 @@ function DeudorRow({ alumno }) {
   if (numeroLimpio.startsWith('0')) {
     numeroLimpio = numeroLimpio.substring(1)
   }
-  const waLink = `https://wa.me/595${numeroLimpio}?text=${encodeURIComponent(`¡Hola ${alumno.nombre_completo}! 👋\nTe escribimos de *Vóley Control - Horus Academy*, para recordarte cariñosamente que tienes cuota(s) pendiente(s) de pago (${totalMeses} mes(es)).\nPor favor, ponte al día para seguir disfrutando sin problemas. ¡Muchas gracias!`)}`
+  const waLink = `https://wa.me/595${numeroLimpio}?text=${encodeURIComponent(`¡Hola, ${alumno.nombre_completo}! 🏐
+
+Esperamos que estés disfrutando de las clases en Horus Academy.
+
+Te enviamos este recordatorio porque registramos un saldo pendiente de ${totalMeses} mes${totalMeses !== 1 ? 'es' : ''}. Para nosotros es fundamental contar con tu apoyo para mantener el nivel de los entrenamientos y las instalaciones. 🛡️
+
+🗓️ ¿Nos confirmas si puedes ponerte al día esta semana?
+Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíanos el comprobante para actualizar tu ficha.
+
+¡Muchas gracias por tu compromiso! 🦅`)}`
 
   return (
     <li className={`border-b border-gray-50 last:border-0 ${tieneVencidos ? 'bg-red-50/50' : 'bg-yellow-50/30'}`}>
