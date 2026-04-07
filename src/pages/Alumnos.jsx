@@ -21,6 +21,41 @@ const EMPTY_FORM = {
   nivel:             'principiante',
 }
 
+function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
+  const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
+  let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
+  const limiteActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+
+  const mesesDeuda = []
+
+  while (cursor <= limiteActual) {
+    const mes  = cursor.getMonth() + 1
+    const anio = cursor.getFullYear()
+
+    const esActual    = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
+    const vencioHoy   = hoy.getDate() > diaVenc
+
+    if (esActual && !vencioHoy) {
+      cursor.setMonth(cursor.getMonth() + 1)
+      continue
+    }
+
+    const pagado = todosPagos.some(
+      p => p.alumno_id === alumno.id &&
+           p.mes_correspondiente === mes &&
+           p.año_correspondiente === anio
+    )
+
+    if (!pagado) {
+      mesesDeuda.push({ mes, anio })
+    }
+
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+
+  return mesesDeuda
+}
+
 export default function Alumnos() {
   const [alumnos, setAlumnos]       = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
@@ -39,16 +74,27 @@ export default function Alumnos() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [{ data: alumnosData }, { data: configData }] = await Promise.all([
+    const [{ data: alumnosData }, { data: configData }, { data: pagosData }] = await Promise.all([
       supabase.from('alumnos').select('*').order('nombre_completo'),
       supabase.from('configuracion').select('clave, valor'),
+      supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago'),
     ])
-    setAlumnos(alumnosData ?? [])
+    
+    let diaVenc = 5;
     if (configData) {
       const p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       const p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      diaVenc = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
       setPrecios({ 1: p1, 2: p2 })
     }
+
+    const hoy = new Date();
+    const finalAlumnos = (alumnosData ?? []).map(a => ({
+      ...a,
+      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, diaVenc)
+    }))
+
+    setAlumnos(finalAlumnos)
     setLoading(false)
   }
 
@@ -170,15 +216,16 @@ export default function Alumnos() {
                 <tr>
                   <th className="px-6 py-3 font-medium">Nombre</th>
                   <th className="px-6 py-3 font-medium">Nivel</th>
+                  <th className="px-6 py-3 font-medium">Estado Cuota</th>
                   <th className="px-6 py-3 font-medium">Frecuencia</th>
                   <th className="px-6 py-3 font-medium">Teléfono</th>
-                  <th className="px-6 py-3 font-medium">Inscripción</th>
-                  <th className="px-6 py-3 font-medium">Estado</th>
                   <th className="px-6 py-3 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {filtered.map(a => (
+                {filtered.map(a => {
+                  const tieneDeuda = (a.mesesDeuda || []).length > 0;
+                  return (
                   <tr key={a.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-gray-800">{a.nombre_completo}</td>
                     <td className="px-6 py-4">
@@ -186,20 +233,17 @@ export default function Alumnos() {
                         {NIVEL_LABEL[a.nivel]}
                       </span>
                     </td>
+                    <td className="px-6 py-4">
+                      {tieneDeuda ? (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Al día</span>
+                      )}
+                    </td>
                     <td className="px-6 py-4 text-gray-600">
                       {a.frecuencia === 1 ? '1 vez/sem' : '2 veces/sem'}
                     </td>
                     <td className="px-6 py-4 text-gray-600">{a.telefono || '—'}</td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {new Date(a.fecha_inscripcion + 'T00:00:00').toLocaleDateString('es-PY')}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        a.estado === 'activo' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {a.estado === 'activo' ? 'Activo' : 'Inactivo'}
-                      </span>
-                    </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-2">
                         <button onClick={() => openEdit(a)} className="p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 transition" title="Editar">
@@ -211,7 +255,7 @@ export default function Alumnos() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>
@@ -243,7 +287,7 @@ export default function Alumnos() {
               </div>
 
               {/* Nivel + Frecuencia */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Nivel</label>
                   <select
@@ -268,7 +312,7 @@ export default function Alumnos() {
               </div>
 
               {/* Fecha nacimiento + Teléfono */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha de nacimiento</label>
                   <input
@@ -288,7 +332,7 @@ export default function Alumnos() {
               </div>
 
               {/* Inscripción + Estado */}
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Fecha inscripción *</label>
                   <input
