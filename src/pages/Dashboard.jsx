@@ -69,16 +69,19 @@ function DeudorRow({ alumno }) {
   if (numeroLimpio.startsWith('0')) {
     numeroLimpio = numeroLimpio.substring(1)
   }
-  const waLink = `https://wa.me/595${numeroLimpio}?text=${encodeURIComponent(`¡Hola, ${alumno.nombre_completo}! 🏐
 
-Esperamos que estés disfrutando de las clases en Horus Academy.
+  const mensaje = `¡Hola, ${alumno.nombre_completo}! 🏐
+
+Esperamos que estés disfrutando de las clases en Horus Voley.
 
 Te enviamos este recordatorio porque registramos un saldo pendiente de ${totalMeses} mes${totalMeses !== 1 ? 'es' : ''}. Para nosotros es fundamental contar con tu apoyo para mantener el nivel de los entrenamientos. 🛡️
 
 🗓️ ¿Nos confirmas si puedes ponerte al día esta semana?
 Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíanos el comprobante para actualizar tu ficha.
 
-¡Muchas gracias por tu compromiso! 🦅`)}`
+¡Muchas gracias por tu compromiso! 🦅`
+
+  const waLink = `https://web.whatsapp.com/send/?phone=595${numeroLimpio}&text=${encodeURIComponent(mensaje)}&type=phone_number&app_absent=0`
 
   return (
     <li className={`border-b border-gray-50 last:border-0 ${tieneVencidos ? 'bg-red-50/50' : 'bg-yellow-50/30'}`}>
