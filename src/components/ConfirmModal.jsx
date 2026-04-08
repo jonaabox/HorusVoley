@@ -8,8 +8,14 @@ const CONFIRM_BTN = {
 
 export default function ConfirmModal({ title, message, confirmLabel, variant = 'danger', onConfirm, onCancel }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+      onClick={onCancel}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="flex items-center gap-3 px-6 py-4 bg-primary-950">
           <span className="text-lg">{ICONS[variant]}</span>
           <h3 className="text-white font-semibold flex-1">{title}</h3>

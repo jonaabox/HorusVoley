@@ -1,0 +1,91 @@
+<h2>Feature #3 — Horarios y Grupos A/B</h2>
+<p class="subtitle">Modelo de datos + integración en Alumnos y Asistencia</p>
+
+<div class="section">
+  <h3>Modelo de datos</h3>
+  <div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px">
+      <div style="font-family:monospace;font-weight:700;color:#1e3a5f;margin-bottom:10px">tabla: horarios (nueva)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;color:#475569">
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">id</code> uuid PK</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">nombre</code> text — "Grupo A", "Grupo B"</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">dia_semana</code> text — "Sábado"</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">hora_inicio</code> time — 14:30 / 16:30</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">hora_fin</code> time — 16:30 / 18:30</div>
+      </div>
+      <div style="margin-top:12px;padding:10px;background:#e0f2fe;border-radius:8px;font-size:12px;color:#0369a1">
+        Starts with 2 rows. Extensible para agregar más horarios en el futuro sin cambiar código.
+      </div>
+    </div>
+    <div style="flex:1;min-width:260px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px">
+      <div style="font-family:monospace;font-weight:700;color:#1e3a5f;margin-bottom:10px">tabla: alumnos (modificada)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;color:#475569">
+        <div style="opacity:0.5">id, nombre_completo, ...</div>
+        <div style="background:#fef3c7;padding:5px 8px;border-radius:6px;border:1px solid #fcd34d">
+          <code style="background:transparent;font-weight:700;color:#92400e">horario_id</code> uuid FK → horarios(id) <span style="color:#94a3b8">(nullable)</span>
+        </div>
+      </div>
+      <div style="margin-top:12px;padding:10px;background:#fef3c7;border-radius:8px;font-size:12px;color:#92400e">
+        Un alumno pertenece a un solo horario. Nullable para alumnos sin horario asignado aún.
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>En Alumnos — lista y formulario</h3>
+  <div style="background:white;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;max-width:500px">
+    <div style="background:#1e3a5f;padding:0">
+      <table style="width:100%;font-size:12px;color:#93c5fd">
+        <tr>
+          <th style="padding:10px 14px;text-align:left;font-weight:500">Nombre</th>
+          <th style="padding:10px 14px;text-align:left;font-weight:500">Nivel</th>
+          <th style="padding:10px 14px;text-align:left;font-weight:500;background:#fef3c7;color:#92400e">Grupo</th>
+          <th style="padding:10px 14px;text-align:left;font-weight:500">Estado</th>
+        </tr>
+      </table>
+    </div>
+    <table style="width:100%;font-size:12px">
+      <tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:10px 14px;color:#1e293b;font-weight:500">María López</td>
+        <td style="padding:10px 14px"><span style="background:#fef9c3;color:#854d0e;padding:2px 7px;border-radius:999px;font-size:11px">Intermedio</span></td>
+        <td style="padding:10px 14px"><span style="background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">A · 14:30</span></td>
+        <td style="padding:10px 14px"><span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:999px;font-size:11px">Al día</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid #f1f5f9">
+        <td style="padding:10px 14px;color:#1e293b;font-weight:500">Juan Pérez</td>
+        <td style="padding:10px 14px"><span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:999px;font-size:11px">Avanzado</span></td>
+        <td style="padding:10px 14px"><span style="background:#f3e8ff;color:#7e22ce;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700">B · 16:30</span></td>
+        <td style="padding:10px 14px"><span style="background:#fef2f2;color:#991b1b;padding:2px 7px;border-radius:999px;font-size:11px">Debe</span></td>
+      </tr>
+      <tr>
+        <td style="padding:10px 14px;color:#1e293b;font-weight:500">Ana García</td>
+        <td style="padding:10px 14px"><span style="background:#dbeafe;color:#1d4ed8;padding:2px 7px;border-radius:999px;font-size:11px">Principiante</span></td>
+        <td style="padding:10px 14px"><span style="background:#f1f5f9;color:#94a3b8;padding:2px 8px;border-radius:999px;font-size:11px">Sin asignar</span></td>
+        <td style="padding:10px 14px"><span style="background:#dcfce7;color:#166534;padding:2px 7px;border-radius:999px;font-size:11px">Al día</span></td>
+      </tr>
+    </table>
+  </div>
+  <div style="margin-top:10px;font-size:12px;color:#64748b">El formulario de alumno agrega un selector de horario: Grupo A (Sáb 14:30–16:30) / Grupo B (Sáb 16:30–18:30) / Sin asignar</div>
+</div>
+
+<div class="section">
+  <h3>En Asistencia — filtro por grupo</h3>
+  <div style="background:white;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);padding:16px;max-width:440px">
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <button style="padding:6px 14px;border-radius:8px;background:#1e3a5f;color:white;font-size:12px;font-weight:600;border:none">Todos</button>
+      <button style="padding:6px 14px;border-radius:8px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:600;border:none">Grupo A · 14:30</button>
+      <button style="padding:6px 14px;border-radius:8px;background:#f3e8ff;color:#7e22ce;font-size:12px;font-weight:600;border:none">Grupo B · 16:30</button>
+    </div>
+    <div style="font-size:12px;color:#64748b">Filtrar la lista de asistencia por grupo para tomar la asistencia de cada turno por separado.</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Archivos involucrados</h3>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">supabase/migrations/</code> — tabla <code>horarios</code> + columna <code>horario_id</code> en alumnos + seed con Grupo A y B</div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/pages/Alumnos.jsx</code> — selector de horario en formulario + columna Grupo en tabla</div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/pages/Asistencia.jsx</code> — filtro por grupo en la vista de asistencia</div>
+  </div>
+</div>

@@ -1,0 +1,63 @@
+<h2>Feature #4 — Modales de confirmación</h2>
+<p class="subtitle">Actualmente el sistema usa <code>alert()</code> y <code>confirm()</code> del navegador. ¿Qué estilo de modal de confirmación preferís?</p>
+
+<div class="cards">
+
+  <div class="card" data-choice="minimal" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:20px;background:#f8fafc">
+      <div style="background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12);padding:24px;max-width:320px;margin:0 auto">
+        <div style="font-size:14px;font-weight:600;color:#1e293b;margin-bottom:8px">¿Eliminar alumno?</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:20px">Esta acción no se puede deshacer.</div>
+        <div style="display:flex;gap:10px">
+          <button style="flex:1;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:white;font-size:13px;color:#475569;cursor:pointer">Cancelar</button>
+          <button style="flex:1;padding:8px;border:none;border-radius:8px;background:#ef4444;color:white;font-size:13px;font-weight:600;cursor:pointer">Eliminar</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A — Minimalista</h3>
+      <p>Texto simple, dos botones. Sin íconos ni colores de fondo. Limpio y directo.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="icon" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:20px;background:#f8fafc">
+      <div style="background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12);padding:24px;max-width:320px;margin:0 auto;text-align:center">
+        <div style="width:48px;height:48px;border-radius:50%;background:#fef2f2;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;font-size:22px">🗑️</div>
+        <div style="font-size:15px;font-weight:700;color:#1e293b;margin-bottom:6px">¿Eliminar alumno?</div>
+        <div style="font-size:13px;color:#64748b;margin-bottom:20px">Esta acción no se puede deshacer.</div>
+        <div style="display:flex;gap:10px">
+          <button style="flex:1;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:white;font-size:13px;color:#475569">Cancelar</button>
+          <button style="flex:1;padding:8px;border:none;border-radius:8px;background:#ef4444;color:white;font-size:13px;font-weight:600">Eliminar</button>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B — Con ícono centrado</h3>
+      <p>Ícono visual que indica el tipo de acción (rojo para eliminar, amarillo para advertencia). Más expresivo.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="danger-banner" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding:20px;background:#f8fafc">
+      <div style="background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12);overflow:hidden;max-width:320px;margin:0 auto">
+        <div style="background:#1e3a5f;padding:14px 20px;display:flex;align-items:center;gap:10px">
+          <span style="font-size:18px">⚠️</span>
+          <span style="color:white;font-size:14px;font-weight:600">Confirmar eliminación</span>
+        </div>
+        <div style="padding:18px 20px">
+          <div style="font-size:13px;color:#475569;margin-bottom:18px">¿Estás seguro que querés eliminar a <strong>Juan Pérez</strong>? Esta acción no se puede deshacer.</div>
+          <div style="display:flex;gap:10px">
+            <button style="flex:1;padding:8px;border:1px solid #e2e8f0;border-radius:8px;background:white;font-size:13px;color:#475569">Cancelar</button>
+            <button style="flex:1;padding:8px;border:none;border-radius:8px;background:#ef4444;color:white;font-size:13px;font-weight:600">Eliminar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C — Con header de color</h3>
+      <p>Consistente con los modales existentes (fondo oscuro en el header). Incluye el nombre del elemento a eliminar.</p>
+    </div>
+  </div>
+
+</div>

@@ -1,0 +1,84 @@
+<h2>Feature #1 — Batch notificación deudores (v2)</h2>
+<p class="subtitle">Con días de aviso configurables desde Configuración</p>
+
+<div class="section">
+  <h3>Cambio en el modelo de datos</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px;color:#475569">
+    Se agrega una nueva clave en la tabla <code>configuracion</code>:<br><br>
+    <code style="background:#e2e8f0;padding:3px 8px;border-radius:4px">dias_aviso_vencimiento = '5'</code> (valor por defecto)<br><br>
+    La sección Configuración ya muestra campos editables por clave. Se agrega este campo junto a <strong>"Día de vencimiento de cuota"</strong>.
+  </div>
+</div>
+
+<div class="section">
+  <h3>¿Cómo funciona el "batch"?</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px;color:#475569">
+    Al cargar la app, <code>DebtAlertContext</code> consulta Supabase para obtener alumnos activos, sus pagos y la config. Calcula qué alumnos <strong>no pagaron el mes actual</strong> y tienen el vencimiento a ≤ <em>N días</em> (configurable). El resultado queda en contexto global, disponible en toda la app sin nuevas consultas.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Flujo completo</h3>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">
+    <div style="background:#1e3a5f;color:white;padding:8px 12px;border-radius:8px">App carga</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px">Consulta alumnos + pagos + config</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px">Calcula deudores próximos</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#fef3c7;border:1px solid #fcd34d;padding:8px 12px;border-radius:8px;font-weight:600">Badge + banner en Sidebar</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px">Click → Campañas pre-cargada</div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>En Configuración</h3>
+  <div style="background:white;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;max-width:420px">
+    <div style="background:#1e3a5f;padding:12px 16px">
+      <span style="color:white;font-size:13px;font-weight:600">Configuración</span>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#f8fafc;border-radius:8px">
+        <span style="color:#475569">Día de vencimiento de cuota</span>
+        <input style="width:60px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;text-align:center" value="5" />
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px">
+        <span style="color:#92400e;font-weight:600">Días de aviso antes del vencimiento</span>
+        <input style="width:60px;padding:4px 8px;border:1px solid #fcd34d;border-radius:6px;text-align:center;background:#fffbeb" value="5" />
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#f8fafc;border-radius:8px">
+        <span style="color:#475569">Precio 1 vez/semana (Gs.)</span>
+        <input style="width:80px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;text-align:center" value="70000" />
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:#f8fafc;border-radius:8px">
+        <span style="color:#475569">Precio 2 veces/semana (Gs.)</span>
+        <input style="width:80px;padding:4px 8px;border:1px solid #e2e8f0;border-radius:6px;text-align:center" value="120000" />
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Archivos involucrados</h3>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/context/DebtAlertContext.jsx</code> — nuevo, calcula deudores próximos al vencimiento usando <code>dias_aviso_vencimiento</code>
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/components/Sidebar.jsx</code> — badge + mini-banner en ítem Campañas
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/pages/Campanas.jsx</code> — acepta state de react-router para pre-cargar deudores
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/pages/Configuracion.jsx</code> — agrega campo <code>dias_aviso_vencimiento</code>
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">App.jsx</code> — envuelve con <code>DebtAlertProvider</code>
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">supabase/migrations/</code> — agrega <code>dias_aviso_vencimiento = '5'</code> a tabla configuracion
+    </div>
+  </div>
+</div>

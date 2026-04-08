@@ -10,27 +10,28 @@ export function useConfirm() {
     })
   }, [])
 
-  const handleConfirm = () => {
-    options?.resolve(true)
-    setOptions(null)
-  }
+  const handleConfirm = useCallback(() => {
+    setOptions(prev => { prev?.resolve(true); return null })
+  }, [])
 
-  const handleCancel = () => {
-    options?.resolve(false)
-    setOptions(null)
-  }
+  const handleCancel = useCallback(() => {
+    setOptions(prev => { prev?.resolve(false); return null })
+  }, [])
 
-  const BoundConfirmModal = () =>
-    options ? (
-      <ConfirmModal
-        title={options.title}
-        message={options.message}
-        confirmLabel={options.confirmLabel}
-        variant={options.variant ?? 'danger'}
-        onConfirm={handleConfirm}
-        onCancel={handleCancel}
-      />
-    ) : null
+  const BoundConfirmModal = useCallback(
+    () =>
+      options ? (
+        <ConfirmModal
+          title={options.title}
+          message={options.message}
+          confirmLabel={options.confirmLabel}
+          variant={options.variant ?? 'danger'}
+          onConfirm={handleConfirm}
+          onCancel={handleCancel}
+        />
+      ) : null,
+    [options, handleConfirm, handleCancel]
+  )
 
   return { confirm, ConfirmModal: BoundConfirmModal }
 }

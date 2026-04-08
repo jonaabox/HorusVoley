@@ -1,0 +1,77 @@
+<h2>Feature #1 — Batch notificación deudores</h2>
+<p class="subtitle">Notificación en el sidebar + lista pre-cargada en Campañas</p>
+
+<div class="section">
+  <h3>¿Cómo funciona el "batch"?</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px;color:#475569">
+    Al cargar la app (o al navegar), se ejecuta una función que calcula qué alumnos activos <strong>no pagaron el mes actual</strong> y cuyo vencimiento es en ≤5 días (o ya venció). El resultado se guarda en contexto global (<code>AuthContext</code> o un contexto nuevo <code>AlertContext</code>). No requiere backend — es un cálculo client-side sobre los datos ya cargados.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Notificación en el Sidebar</h3>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+    <div style="flex:1;min-width:200px">
+      <div style="background:#1e3a5f;border-radius:12px;padding:16px;width:200px">
+        <div style="color:#93c5fd;font-size:10px;font-weight:700;letter-spacing:1px;margin-bottom:16px">MENÚ</div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#cbd5e1;font-size:13px">📊 Dashboard</div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#cbd5e1;font-size:13px">👥 Alumnos</div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#cbd5e1;font-size:13px">💰 Pagos</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:8px;background:#fef3c7;color:#92400e;font-size:13px;font-weight:600;cursor:pointer">
+            <span>📣 Campañas</span>
+            <span style="background:#f59e0b;color:white;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:700">4</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;color:#cbd5e1;font-size:13px">📅 Asistencia</div>
+        </div>
+        <div style="margin-top:16px;background:#f59e0b;border-radius:8px;padding:10px;font-size:11px;color:#1c1917">
+          ⚠️ <strong>4 alumnos</strong> deben pagar antes del día 5
+          <div style="margin-top:6px;color:#78350f;cursor:pointer;font-weight:600">Ver lista →</div>
+        </div>
+      </div>
+    </div>
+    <div style="flex:2;min-width:260px;font-size:13px;color:#475569">
+      <ul style="list-style:none;padding:0;display:flex;flex-direction:column;gap:10px">
+        <li style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#fef3c7;color:#f59e0b;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px">1</span>
+          <span>Badge amarillo con contador sobre el ítem de Campañas en el sidebar</span>
+        </li>
+        <li style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#fef3c7;color:#f59e0b;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px">2</span>
+          <span>Mini-banner colapsable debajo del menú con el resumen y botón "Ver lista"</span>
+        </li>
+        <li style="display:flex;gap:10px;align-items:flex-start">
+          <span style="background:#fef3c7;color:#f59e0b;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0;margin-top:1px">3</span>
+          <span>Al hacer click → navega a Campañas y pre-carga la pestaña de Alumnos con los deudores ya filtrados y un mensaje template de recordatorio de cuota</span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Lógica del cálculo</h3>
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px;color:#475569">
+    Un alumno entra en la lista de notificación si: <br>
+    → <strong>estado activo</strong> + <strong>no pagó el mes actual</strong> + <strong>(días para vencimiento ≤ 5 ó ya venció)</strong><br><br>
+    El cálculo reutiliza la función <code>calcularMesesDeuda</code> ya existente en el proyecto. Solo se agrega la condición de proximidad al vencimiento.
+  </div>
+</div>
+
+<div class="section">
+  <h3>Archivos involucrados</h3>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/context/DebtAlertContext.jsx</code> — nuevo contexto que calcula y expone la lista de deudores próximos al vencimiento
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/components/Sidebar.jsx</code> — agrega badge + mini-banner con la notificación
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/pages/Campanas.jsx</code> — acepta parámetro URL o state de react-router para pre-cargar lista de deudores
+    </div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+      <code style="color:#1e3a5f;font-weight:700">src/main.jsx / App.jsx</code> — envuelve la app con el nuevo <code>DebtAlertProvider</code>
+    </div>
+  </div>
+</div>

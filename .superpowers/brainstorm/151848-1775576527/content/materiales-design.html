@@ -1,0 +1,89 @@
+<h2>Feature #5 — Biblioteca de materiales (PDF)</h2>
+<p class="subtitle">Sección propia con biblioteca permanente + envío masivo por WhatsApp</p>
+
+<div class="section">
+  <h3>Modelo de datos</h3>
+  <div style="display:flex;gap:16px;flex-wrap:wrap">
+    <div style="flex:1;min-width:260px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px">
+      <div style="font-family:monospace;font-weight:700;color:#1e3a5f;margin-bottom:10px">Supabase Storage: bucket <code>materiales</code></div>
+      <div style="color:#475569">Almacena los archivos PDF. Acceso público para generar links compartibles por WhatsApp.</div>
+    </div>
+    <div style="flex:1;min-width:260px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;font-size:13px">
+      <div style="font-family:monospace;font-weight:700;color:#1e3a5f;margin-bottom:10px">tabla: materiales (nueva)</div>
+      <div style="display:flex;flex-direction:column;gap:6px;color:#475569">
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">id</code> uuid PK</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">nombre</code> text — "Reglas del juego"</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">descripcion</code> text (opcional)</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">storage_path</code> text — path en el bucket</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">public_url</code> text — URL pública del PDF</div>
+        <div><code style="background:#e2e8f0;padding:1px 5px;border-radius:3px">created_at</code> timestamptz</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Nueva página: Materiales</h3>
+  <div style="background:white;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.08);overflow:hidden;max-width:560px">
+    <div style="background:#1e3a5f;padding:12px 18px;display:flex;justify-content:space-between;align-items:center">
+      <span style="color:white;font-weight:600;font-size:14px">📚 Materiales</span>
+      <button style="background:#f59e0b;color:white;border:none;padding:6px 12px;border-radius:8px;font-size:12px;font-weight:600">+ Subir PDF</button>
+    </div>
+    <div style="padding:16px;display:flex;flex-direction:column;gap:10px">
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="background:#fef2f2;width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">📄</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#1e293b">Reglas del voley</div>
+            <div style="font-size:11px;color:#94a3b8">Subido 05/04/2026</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="padding:5px 10px;border-radius:7px;background:#dbeafe;color:#1d4ed8;border:none;font-size:12px;font-weight:600">Enviar</button>
+          <button style="padding:5px 10px;border-radius:7px;background:#fef2f2;color:#dc2626;border:none;font-size:12px">🗑</button>
+        </div>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="background:#fef2f2;width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px">📄</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;color:#1e293b">Ejercicios de saque</div>
+            <div style="font-size:11px;color:#94a3b8">Subido 02/04/2026</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button style="padding:5px 10px;border-radius:7px;background:#dbeafe;color:#1d4ed8;border:none;font-size:12px;font-weight:600">Enviar</button>
+          <button style="padding:5px 10px;border-radius:7px;background:#fef2f2;color:#dc2626;border:none;font-size:12px">🗑</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Flujo de envío</h3>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:12px">
+    <div style="background:#1e3a5f;color:white;padding:8px 12px;border-radius:8px">Click "Enviar"</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px">Modal: elegir destinatarios<br><span style="color:#94a3b8;font-size:11px">(todos / por grupo / selección manual)</span></div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#f1f5f9;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px">Genera mensaje con link del PDF</div>
+    <div style="color:#94a3b8">→</div>
+    <div style="background:#dbeafe;border:1px solid #93c5fd;padding:8px 12px;border-radius:8px;font-weight:600;color:#1d4ed8">Abre modal de envío<br>estilo Campañas</div>
+  </div>
+  <div style="margin-top:10px;font-size:12px;color:#64748b">El modal de envío reutiliza el componente <code>EnvioModal</code> de Campañas con la lista de contactos y el mensaje pre-armado con el link.</div>
+</div>
+
+<div class="section">
+  <h3>Archivos involucrados</h3>
+  <div style="display:flex;flex-direction:column;gap:8px;font-size:13px">
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">supabase/migrations/</code> — tabla <code>materiales</code> + bucket <code>materiales</code> con política pública</div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/pages/Materiales.jsx</code> — nueva página con biblioteca y upload</div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/components/Sidebar.jsx</code> — agrega ítem "Materiales" al menú</div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/App.jsx</code> — nueva ruta <code>/materiales</code></div>
+    <div style="padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px"><code style="color:#1e3a5f;font-weight:700">src/pages/Campanas.jsx</code> — extrae <code>EnvioModal</code> a componente reutilizable</div>
+  </div>
+</div>
