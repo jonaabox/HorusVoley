@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useConfirm } from '../hooks/useConfirm'
 import { Plus, Search, Pencil, Trash2, X, Loader2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
@@ -57,6 +58,7 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
 }
 
 export default function Alumnos() {
+  const { confirm, ConfirmModal } = useConfirm()
   const [alumnos, setAlumnos]       = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
   const [search, setSearch]         = useState('')
@@ -163,7 +165,12 @@ export default function Alumnos() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este alumno? Esta acción no se puede deshacer.')) return
+    const ok = await confirm({
+      title: 'Eliminar alumno',
+      message: '¿Estás seguro que querés eliminar este alumno? Esta acción no se puede deshacer.',
+      variant: 'danger',
+    })
+    if (!ok) return
     await supabase.from('alumnos').delete().eq('id', id)
     fetchAll()
   }
@@ -401,6 +408,7 @@ export default function Alumnos() {
           </div>
         </div>
       )}
+      <ConfirmModal />
     </div>
   )
 }

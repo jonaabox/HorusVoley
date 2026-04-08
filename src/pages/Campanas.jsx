@@ -6,6 +6,7 @@ import {
   ChevronDown, Save, BookOpen, AlertCircle
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useConfirm } from '../hooks/useConfirm'
 
 // ── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -328,12 +329,20 @@ function TabImportar({ onRecargarGrupos }) {
 // ── TAB: Grupos ───────────────────────────────────────────────────────────────
 
 function TabGrupos({ grupos, onRecargar, onIrACampana }) {
+  const { confirm, ConfirmModal } = useConfirm()
   const [eliminando, setEliminando] = useState(null)
+
   const eliminar = async (id, nombre) => {
-    if (!confirm(`¿Eliminar el grupo "${nombre}"?`)) return
+    const ok = await confirm({
+      title: 'Eliminar grupo',
+      message: `¿Estás seguro que querés eliminar el grupo "${nombre}"?`,
+      variant: 'danger',
+    })
+    if (!ok) return
     setEliminando(id)
     await supabase.from('grupos').delete().eq('id', id)
-    onRecargar(); setEliminando(null)
+    onRecargar()
+    setEliminando(null)
   }
   if (!grupos.length) return (
     <div className="text-center py-14 text-gray-400">
@@ -362,6 +371,7 @@ function TabGrupos({ grupos, onRecargar, onIrACampana }) {
           </button>
         </div>
       ))}
+      <ConfirmModal />
     </div>
   )
 }
