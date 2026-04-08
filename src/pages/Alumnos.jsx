@@ -141,7 +141,7 @@ export default function Alumnos() {
     setSaving(true)
     setError('')
 
-    const payload = { ...form, frecuencia: parseInt(form.frecuencia) }
+    const payload = { ...form, frecuencia: parseInt(form.frecuencia), horario_id: form.horario_id || null }
 
     if (editingId) {
       const { error: err } = await supabase.from('alumnos').update(payload).eq('id', editingId)
