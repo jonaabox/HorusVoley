@@ -158,6 +158,20 @@ export default function Configuracion() {
               className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Días de aviso antes del vencimiento
+            </label>
+            <p className="text-xs text-gray-400 mb-2">
+              Días de anticipación para mostrar la alerta de deudores próximos (ej: 5)
+            </p>
+            <input
+              type="number" min="1" max="28"
+              value={valores['dias_aviso_vencimiento'] ?? '5'}
+              onChange={e => set('dias_aviso_vencimiento', e.target.value)}
+              className="w-32 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
         </div>
 
         <div>

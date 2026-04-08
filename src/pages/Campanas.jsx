@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   FileSpreadsheet, X, Plus, Eye, Megaphone, FolderPlus, Trash2,
@@ -378,10 +379,10 @@ function TabGrupos({ grupos, onRecargar, onIrACampana }) {
 
 // ── TAB: Campaña ──────────────────────────────────────────────────────────────
 
-function TabCampana({ grupos, grupoInicial }) {
+function TabCampana({ grupos, grupoInicial, mensajeInicial = '' }) {
   const [grupoId, setGrupoId]           = useState(grupoInicial?.id ?? '')
   const [nombreCampana, setNombreCampana] = useState('')
-  const [mensaje, setMensaje]           = useState('')
+  const [mensaje, setMensaje]           = useState(mensajeInicial)
   const [plantillas, setPlantillas]     = useState([])
   const [yaEnviados, setYaEnviados]     = useState(new Set())
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -698,10 +699,17 @@ function TabCampana({ grupos, grupoInicial }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function Campanas() {
-  const [tab, setTab]             = useState('importar')
-  const [grupos, setGrupos]       = useState([])
-  const [cargando, setCargando]   = useState(true)
-  const [grupoParaCampana, setGrupoParaCampana] = useState(null)
+  const location = useLocation()
+  const routeState = location.state ?? {}
+
+  const [tab, setTab]           = useState(routeState.deudores ? 'campana' : 'importar')
+  const [grupos, setGrupos]     = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [grupoParaCampana, setGrupoParaCampana] = useState(
+    routeState.deudores
+      ? { id: '__deudores__', nombre: 'Alumnos con cuota próxima', contactos: routeState.deudores }
+      : null
+  )
 
   const cargarGrupos = async () => {
     setCargando(true)
@@ -716,6 +724,11 @@ export default function Campanas() {
     setGrupoParaCampana(grupo)
     setTab('campana')
   }
+
+  // If there's a synthetic deudores group, add it at the top of the list
+  const gruposConDeudores = grupoParaCampana?.id === '__deudores__'
+    ? [grupoParaCampana, ...grupos]
+    : grupos
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -737,7 +750,13 @@ export default function Campanas() {
               ? <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-primary-600" /></div>
               : <TabGrupos grupos={grupos} onRecargar={cargarGrupos} onIrACampana={irACampana} />
           )}
-          {tab === 'campana' && <TabCampana grupos={grupos} grupoInicial={grupoParaCampana} />}
+          {tab === 'campana' && (
+            <TabCampana
+              grupos={gruposConDeudores}
+              grupoInicial={grupoParaCampana}
+              mensajeInicial={routeState.mensajeInicial ?? ''}
+            />
+          )}
         </div>
       </div>
     </div>

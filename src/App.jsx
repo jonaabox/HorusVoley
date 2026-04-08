@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
+import { DebtAlertProvider } from './context/DebtAlertContext'
 import ProtectedRoute from './components/ProtectedRoute'
 import Layout from './components/Layout'
 import Login from './pages/Login'
@@ -15,6 +16,7 @@ import Validacion from './pages/Validacion'
 export default function App() {
   return (
     <AuthProvider>
+      <DebtAlertProvider>
       <BrowserRouter basename={import.meta.env.BASE_URL}>
         <Routes>
           <Route path="/validar" element={<Validacion />} />
@@ -38,6 +40,7 @@ export default function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>
+      </DebtAlertProvider>
     </AuthProvider>
   )
 }
