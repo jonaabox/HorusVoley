@@ -60,8 +60,7 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
   return mesesDeuda
 }
 
-function DeudorRow({ alumno }) {
-  const { confirm, ConfirmModal } = useConfirm()
+function DeudorRow({ alumno, confirm }) {
   const [expandido, setExpandido] = useState(false)
   const totalMeses = alumno.mesesDeuda.length
   const tieneVencidos = alumno.mesesDeuda.some(m => m.vencido)
@@ -159,12 +158,12 @@ Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíano
           </div>
         </div>
       )}
-      <ConfirmModal />
     </li>
   )
 }
 
 export default function Dashboard() {
+  const { confirm, ConfirmModal } = useConfirm()
   const [stats, setStats]     = useState({ totalAlumnos: 0, ingresosMes: 0, deudoresCount: 0 })
   const [deudores, setDeudores] = useState([])
   const [loading, setLoading]  = useState(true)
@@ -250,10 +249,11 @@ export default function Dashboard() {
           </div>
         ) : (
           <ul>
-            {deudores.map(a => <DeudorRow key={a.id} alumno={a} />)}
+            {deudores.map(a => <DeudorRow key={a.id} alumno={a} confirm={confirm} />)}
           </ul>
         )}
       </div>
+      <ConfirmModal />
     </div>
   )
 }

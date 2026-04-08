@@ -1,21 +1,27 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import ConfirmModal from '../components/ConfirmModal'
 
 export function useConfirm() {
   const [options, setOptions] = useState(null)
+  const resolverRef = useRef(null)
 
   const confirm = useCallback((opts) => {
     return new Promise((resolve) => {
-      setOptions({ ...opts, resolve })
+      resolverRef.current = resolve
+      setOptions(opts)
     })
   }, [])
 
   const handleConfirm = useCallback(() => {
-    setOptions(prev => { prev?.resolve(true); return null })
+    resolverRef.current?.(true)
+    resolverRef.current = null
+    setOptions(null)
   }, [])
 
   const handleCancel = useCallback(() => {
-    setOptions(prev => { prev?.resolve(false); return null })
+    resolverRef.current?.(false)
+    resolverRef.current = null
+    setOptions(null)
   }, [])
 
   const BoundConfirmModal = useCallback(
