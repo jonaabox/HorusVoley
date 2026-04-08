@@ -36,7 +36,8 @@ function diaLabel(fechaStr) {
 }
 
 // ─── TAB: Registro diario ────────────────────────────────────────────────────
-function Registro({ dias1x, dias2x }) {
+function Registro({ dias1x, dias2x, horarios }) {
+  const [filtroHorarioId, setFiltroHorarioId] = useState('')
   const [fecha, setFecha]           = useState(new Date().toISOString().split('T')[0])
   const [alumnos, setAlumnos]       = useState([])
   const [asistencia, setAsistencia] = useState({})
@@ -48,7 +49,7 @@ function Registro({ dias1x, dias2x }) {
   const fetchData = async () => {
     setLoading(true)
     const [{ data: alumnosData }, { data: asistenciaData }] = await Promise.all([
-      supabase.from('alumnos').select('id, nombre_completo, nivel, frecuencia').eq('estado', 'activo').order('nombre_completo'),
+      supabase.from('alumnos').select('id, nombre_completo, nivel, frecuencia, horario_id').eq('estado', 'activo').order('nombre_completo'),
       supabase.from('asistencia').select('alumno_id, presente').eq('fecha', fecha),
     ])
     const mapa = {}
@@ -85,11 +86,42 @@ function Registro({ dias1x, dias2x }) {
     ? alumnos.filter(a => a.frecuencia === 2)
     : alumnos
 
-  const presentes = alumnosFiltrados.filter(a => asistencia[a.id] === true).length
+  const alumnosFiltradosPorGrupo = filtroHorarioId
+    ? alumnosFiltrados.filter(a => a.horario_id === filtroHorarioId)
+    : alumnosFiltrados
+
+  const presentes = alumnosFiltradosPorGrupo.filter(a => asistencia[a.id] === true).length
 
   return (
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {horarios.length > 0 && (
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={() => setFiltroHorarioId('')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                !filtroHorarioId
+                  ? 'bg-primary-800 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              Todos
+            </button>
+            {horarios.map(h => (
+              <button
+                key={h.id}
+                onClick={() => setFiltroHorarioId(h.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  filtroHorarioId === h.id
+                    ? (h.nombre === 'Grupo A' ? 'bg-blue-600 text-white' : 'bg-purple-600 text-white')
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {h.nombre} · {h.hora_inicio.slice(0, 5)}
+              </button>
+            ))}
+          </div>
+        )}
         <div className="flex items-center gap-2">
           <CalendarDays size={18} className="text-gray-400" />
           <input
@@ -117,18 +149,18 @@ function Registro({ dias1x, dias2x }) {
         )}
 
         <span className="text-sm text-gray-500 sm:ml-auto">
-          {presentes} / {alumnosFiltrados.length} presentes
+          {presentes} / {alumnosFiltradosPorGrupo.length} presentes
         </span>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><Loader2 size={28} className="animate-spin text-primary-600" /></div>
-        ) : alumnosFiltrados.length === 0 ? (
+        ) : alumnosFiltradosPorGrupo.length === 0 ? (
           <p className="text-center text-gray-400 py-16 text-sm">No hay alumnos que entrenen este día.</p>
         ) : (
           <ul className="divide-y divide-gray-50">
-            {alumnosFiltrados.map(a => {
+            {alumnosFiltradosPorGrupo.map(a => {
               const presente = asistencia[a.id]
               const isSaving = saving === a.id
               return (
@@ -194,7 +226,7 @@ function Reporte({ dias1x, dias2x }) {
     setDias(diasMes)
 
     const [{ data: alumnosData }, { data: asistenciaData }] = await Promise.all([
-      supabase.from('alumnos').select('id, nombre_completo, nivel, frecuencia').eq('estado', 'activo').order('nombre_completo'),
+      supabase.from('alumnos').select('id, nombre_completo, nivel, frecuencia, horario_id').eq('estado', 'activo').order('nombre_completo'),
       supabase.from('asistencia')
         .select('alumno_id, fecha, presente')
         .in('fecha', diasMes.todos.length > 0 ? diasMes.todos : ['1900-01-01']),
@@ -342,25 +374,29 @@ function Reporte({ dias1x, dias2x }) {
 
 // ─── Página principal ────────────────────────────────────────────────────────
 export default function Asistencia() {
-  const [tab, setTab]   = useState('registro')
-  const [dias1x, setDias1x] = useState([6])
-  const [dias2x, setDias2x] = useState([2, 6])
+  const [tab, setTab]           = useState('registro')
+  const [dias1x, setDias1x]     = useState([6])
+  const [dias2x, setDias2x]     = useState([2, 6])
+  const [horarios, setHorarios] = useState([])
   const [configLoaded, setConfigLoaded] = useState(false)
 
   useEffect(() => {
-    supabase.from('configuracion').select('clave, valor')
-      .in('clave', ['dias_1_vez_semana', 'dias_2_veces_semana'])
-      .then(({ data }) => {
-        if (data) {
-          const parse = (clave, fallback) => {
-            const v = data.find(c => c.clave === clave)?.valor
-            return v ? v.split(',').map(Number) : fallback
-          }
-          setDias1x(parse('dias_1_vez_semana', [6]))
-          setDias2x(parse('dias_2_veces_semana', [2, 6]))
+    Promise.all([
+      supabase.from('configuracion').select('clave, valor')
+        .in('clave', ['dias_1_vez_semana', 'dias_2_veces_semana']),
+      supabase.from('horarios').select('*').order('hora_inicio'),
+    ]).then(([{ data: configData }, { data: horariosData }]) => {
+      if (configData) {
+        const parse = (clave, fallback) => {
+          const v = configData.find(c => c.clave === clave)?.valor
+          return v ? v.split(',').map(Number) : fallback
         }
-        setConfigLoaded(true)
-      })
+        setDias1x(parse('dias_1_vez_semana', [6]))
+        setDias2x(parse('dias_2_veces_semana', [2, 6]))
+      }
+      setHorarios(horariosData ?? [])
+      setConfigLoaded(true)
+    })
   }, [])
 
   const diasNombres1x = dias1x.map(d => ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d]).join(', ')
@@ -401,7 +437,7 @@ export default function Asistencia() {
       </div>
 
       {tab === 'registro'
-        ? <Registro dias1x={dias1x} dias2x={dias2x} />
+        ? <Registro dias1x={dias1x} dias2x={dias2x} horarios={horarios} />
         : <Reporte  dias1x={dias1x} dias2x={dias2x} />
       }
     </div>

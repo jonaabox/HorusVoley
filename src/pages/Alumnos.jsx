@@ -20,6 +20,7 @@ const EMPTY_FORM = {
   estado:            'activo',
   frecuencia:        2,
   nivel:             'principiante',
+  horario_id:        '',
 }
 
 function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
@@ -60,6 +61,7 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
 export default function Alumnos() {
   const { confirm, ConfirmModal } = useConfirm()
   const [alumnos, setAlumnos]       = useState([])
+  const [horarios, setHorarios]     = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
   const [search, setSearch]         = useState('')
   const [loading, setLoading]       = useState(true)
@@ -76,10 +78,11 @@ export default function Alumnos() {
 
   const fetchAll = async () => {
     setLoading(true)
-    const [{ data: alumnosData }, { data: configData }, { data: pagosData }] = await Promise.all([
+    const [{ data: alumnosData }, { data: configData }, { data: pagosData }, { data: horariosData }] = await Promise.all([
       supabase.from('alumnos').select('*').order('nombre_completo'),
       supabase.from('configuracion').select('clave, valor'),
       supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago'),
+      supabase.from('horarios').select('*').order('hora_inicio'),
     ])
     
     let diaVenc = 5;
@@ -97,6 +100,7 @@ export default function Alumnos() {
     }))
 
     setAlumnos(finalAlumnos)
+    setHorarios(horariosData ?? [])
     setLoading(false)
   }
 
@@ -118,6 +122,7 @@ export default function Alumnos() {
       estado:            alumno.estado,
       frecuencia:        alumno.frecuencia,
       nivel:             alumno.nivel,
+      horario_id:        alumno.horario_id ?? '',
     })
     setEditingId(alumno.id)
     setError('')
@@ -223,6 +228,7 @@ export default function Alumnos() {
                 <tr>
                   <th className="px-6 py-3 font-medium">Nombre</th>
                   <th className="px-6 py-3 font-medium">Nivel</th>
+                  <th className="px-6 py-3 font-medium">Grupo</th>
                   <th className="px-6 py-3 font-medium">Estado Cuota</th>
                   <th className="px-6 py-3 font-medium">Frecuencia</th>
                   <th className="px-6 py-3 font-medium">Teléfono</th>
@@ -239,6 +245,20 @@ export default function Alumnos() {
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${NIVEL_COLOR[a.nivel]}`}>
                         {NIVEL_LABEL[a.nivel]}
                       </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {(() => {
+                        const h = horarios.find(h => h.id === a.horario_id)
+                        if (!h) return <span className="text-gray-400 text-xs">Sin asignar</span>
+                        const colorClass = h.nombre === 'Grupo A'
+                          ? 'bg-blue-100 text-blue-700'
+                          : 'bg-purple-100 text-purple-700'
+                        return (
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>
+                            {h.nombre} · {h.hora_inicio.slice(0, 5)}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-6 py-4">
                       {tieneDeuda ? (
@@ -316,6 +336,23 @@ export default function Alumnos() {
                     <option value={2}>2 veces/semana — Gs. {precios[2].toLocaleString('es-PY')}</option>
                   </select>
                 </div>
+              </div>
+
+              {/* Horario */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Horario / Grupo</label>
+                <select
+                  value={form.horario_id}
+                  onChange={e => setForm({ ...form, horario_id: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Sin asignar</option>
+                  {horarios.map(h => (
+                    <option key={h.id} value={h.id}>
+                      {h.nombre} — {h.dia_semana} {h.hora_inicio.slice(0, 5)}–{h.hora_fin.slice(0, 5)}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* Fecha nacimiento + Teléfono */}
