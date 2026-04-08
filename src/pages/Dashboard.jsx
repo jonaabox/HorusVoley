@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, DollarSign, AlertTriangle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { Users, DollarSign, AlertTriangle, Clock, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from '../hooks/useConfirm'
 
@@ -8,16 +8,27 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-function StatCard({ icon: Icon, label, value, color }) {
+function StatCard({ icon: Icon, label, value, color, oculto, onToggle }) {
   return (
     <div className="bg-white rounded-xl shadow-sm p-6 flex items-center gap-5 border border-gray-100">
       <div className={`p-3 rounded-xl ${color}`}>
         <Icon size={24} className="text-white" />
       </div>
-      <div>
+      <div className="flex-1">
         <p className="text-gray-500 text-sm">{label}</p>
-        <p className="text-2xl font-bold text-gray-800">{value}</p>
+        <p className="text-2xl font-bold text-gray-800">
+          {oculto ? 'Gs. ●●●●●●' : value}
+        </p>
       </div>
+      {onToggle && (
+        <button
+          onClick={onToggle}
+          className="text-gray-300 hover:text-gray-500 transition shrink-0"
+          title={oculto ? 'Mostrar monto' : 'Ocultar monto'}
+        >
+          {oculto ? <Eye size={16} /> : <EyeOff size={16} />}
+        </button>
+      )}
     </div>
   )
 }
@@ -165,9 +176,10 @@ Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíano
 
 export default function Dashboard() {
   const { confirm, ConfirmModal } = useConfirm()
-  const [stats, setStats]     = useState({ totalAlumnos: 0, ingresosMes: 0, deudoresCount: 0 })
-  const [deudores, setDeudores] = useState([])
-  const [loading, setLoading]  = useState(true)
+  const [stats, setStats]         = useState({ totalAlumnos: 0, ingresosMes: 0, deudoresCount: 0 })
+  const [deudores, setDeudores]   = useState([])
+  const [loading, setLoading]     = useState(true)
+  const [verIngresos, setVerIngresos] = useState(false)
 
   useEffect(() => { fetchData() }, [])
 
@@ -229,9 +241,10 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <StatCard icon={Users}         label="Alumnos activos"    value={stats.totalAlumnos}                                       color="bg-primary-700" />
-        <StatCard icon={DollarSign}    label="Ingresos del mes"   value={`Gs. ${stats.ingresosMes.toLocaleString('es-PY')}`}       color="bg-gold-600"    />
-        <StatCard icon={AlertTriangle} label="Alumnos con deuda"  value={stats.deudoresCount}                                      color="bg-red-500"     />
+        <StatCard icon={Users}         label="Alumnos activos"   value={stats.totalAlumnos}                                 color="bg-primary-700" />
+        <StatCard icon={DollarSign}    label="Ingresos del mes"  value={`Gs. ${stats.ingresosMes.toLocaleString('es-PY')}`} color="bg-gold-600"
+          oculto={!verIngresos} onToggle={() => setVerIngresos(v => !v)} />
+        <StatCard icon={AlertTriangle} label="Alumnos con deuda" value={stats.deudoresCount}                                color="bg-red-500"     />
       </div>
 
       {/* Lista de deudores */}
