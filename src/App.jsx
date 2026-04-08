@@ -11,6 +11,7 @@ import Pagos from './pages/Pagos'
 import Reportes from './pages/Reportes'
 import Configuracion from './pages/Configuracion'
 import Campanas from './pages/Campanas'
+import Materiales from './pages/Materiales'
 import Validacion from './pages/Validacion'
 
 export default function App() {
@@ -35,6 +36,7 @@ export default function App() {
             <Route path="pagos"      element={<Pagos />}        />
             <Route path="reportes"   element={<Reportes />}     />
             <Route path="configuracion" element={<Configuracion />} />
+            <Route path="materiales"    element={<Materiales />}    />
             <Route path="campanas"      element={<Campanas />}      />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
