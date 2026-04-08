@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import * as XLSX from 'xlsx'
 import {
   FileSpreadsheet, X, Plus, Eye, Megaphone, FolderPlus, Trash2,
@@ -6,23 +7,9 @@ import {
   ChevronDown, Save, BookOpen, AlertCircle
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-
-// ── Utilidades ───────────────────────────────────────────────────────────────
-
-function limpiarTelefono(raw, prefijo) {
-  if (!raw) return null
-  const limpio = String(raw).replace(/[\s\-\(\)\+]/g, '')
-  if (limpio.length < 7) return null
-  return limpio.startsWith(prefijo) ? limpio : prefijo + limpio
-}
-
-function buildWaUrl(telefono, mensaje) {
-  return `https://web.whatsapp.com/send/?phone=${telefono}&text=${encodeURIComponent(mensaje)}&type=phone_number&app_absent=0`
-}
-
-function personalizarMensaje(template, contacto) {
-  return template.replace(/\{\{(\w+)\}\}/g, (_, k) => contacto[k] ?? `{{${k}}}`)
-}
+import { useConfirm } from '../hooks/useConfirm'
+import EnvioModal from '../components/EnvioModal'
+import { buildWaUrl, personalizarMensaje, limpiarTelefono } from '../lib/whatsapp'
 
 // ── Tab header ────────────────────────────────────────────────────────────────
 
@@ -86,83 +73,6 @@ function MessageEditor({ columnas, mensaje, onChange }) {
         className="w-full px-4 py-3 border border-gray-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 resize-none leading-relaxed"
       />
       <p className="text-xs text-gray-400">{mensaje.length} caracteres</p>
-    </div>
-  )
-}
-
-// ── Modal de envío ────────────────────────────────────────────────────────────
-
-function EnvioModal({ contactos, mensaje, campana, onCerrar }) {
-  const [enviados, setEnviados] = useState(new Set())
-  const [guardando, setGuardando] = useState(new Set())
-
-  const marcar = async (idx, telefono) => {
-    if (enviados.has(idx)) return
-    setGuardando(g => new Set([...g, idx]))
-    // Registrar en historial para no repetir en futuras campañas
-    await supabase.from('envios_historial')
-      .upsert({ telefono, campana }, { onConflict: 'telefono,campana', ignoreDuplicates: true })
-    setGuardando(g => { const s = new Set(g); s.delete(idx); return s })
-    setEnviados(e => new Set([...e, idx]))
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg flex flex-col max-h-[90vh]">
-        <div className="bg-primary-950 px-6 py-4 flex items-center justify-between rounded-t-2xl shrink-0">
-          <div>
-            <h3 className="text-white font-semibold">Enviar campaña: {campana}</h3>
-            <p className="text-primary-300 text-sm">{enviados.size} / {contactos.length} enviados</p>
-          </div>
-          <button onClick={onCerrar} className="text-primary-300 hover:text-white"><X size={20} /></button>
-        </div>
-
-        <div className="h-1.5 bg-gray-100 shrink-0">
-          <div className="h-full bg-gold-500 transition-all duration-300"
-            style={{ width: `${(enviados.size / contactos.length) * 100}%` }} />
-        </div>
-
-        <div className="px-5 py-3 bg-amber-50 border-b border-amber-100 text-xs text-amber-700 shrink-0">
-          Haz click en el botón verde para abrir WhatsApp Web. El número queda registrado automáticamente para no repetirlo.
-        </div>
-
-        <ul className="overflow-y-auto flex-1 divide-y divide-gray-50 px-2 py-2">
-          {contactos.map((c, i) => {
-            const msg     = personalizarMensaje(mensaje, c)
-            const nombre  = c['Nombres'] ?? c['Nombre'] ?? c['nombre'] ?? `Contacto ${i + 1}`
-            const enviado = enviados.has(i)
-            const guardandoEste = guardando.has(i)
-            return (
-              <li key={i} className={`flex items-center gap-3 px-3 py-3 rounded-lg transition ${enviado ? 'bg-green-50' : 'hover:bg-gray-50'}`}>
-                <div className={`w-5 h-5 rounded flex items-center justify-center border shrink-0 ${enviado ? 'bg-green-500 border-green-500 text-white' : 'border-gray-200'}`}>
-                  {enviado && <Check size={11} />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium truncate ${enviado ? 'text-gray-400 line-through' : 'text-gray-800'}`}>{nombre}</p>
-                  <p className="text-xs text-gray-400 font-mono">{c.telefono}</p>
-                </div>
-                <a href={buildWaUrl(c.telefono, msg)} target="_blank" rel="noopener noreferrer"
-                  onClick={() => marcar(i, c.telefono)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition min-w-[68px] justify-center ${
-                    enviado ? 'bg-gray-100 text-gray-400 pointer-events-none'
-                    : guardandoEste ? 'bg-green-100 text-green-600'
-                    : 'bg-[#25D366] hover:bg-[#20bd5a] text-white shadow-sm'
-                  }`}
-                >
-                  {guardandoEste ? <Loader2 size={12} className="animate-spin" /> : enviado ? 'Enviado' : <><MessageSquare size={12} /> Abrir</>}
-                </a>
-              </li>
-            )
-          })}
-        </ul>
-
-        <div className="px-5 py-4 border-t border-gray-100 flex items-center justify-between shrink-0">
-          <span className="text-sm text-gray-500">{enviados.size} de {contactos.length} enviados</span>
-          <button onClick={onCerrar} className="px-5 py-2 bg-primary-800 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition">
-            Cerrar
-          </button>
-        </div>
-      </div>
     </div>
   )
 }
@@ -328,12 +238,20 @@ function TabImportar({ onRecargarGrupos }) {
 // ── TAB: Grupos ───────────────────────────────────────────────────────────────
 
 function TabGrupos({ grupos, onRecargar, onIrACampana }) {
+  const { confirm, ConfirmModal } = useConfirm()
   const [eliminando, setEliminando] = useState(null)
+
   const eliminar = async (id, nombre) => {
-    if (!confirm(`¿Eliminar el grupo "${nombre}"?`)) return
+    const ok = await confirm({
+      title: 'Eliminar grupo',
+      message: `¿Estás seguro que querés eliminar el grupo "${nombre}"?`,
+      variant: 'danger',
+    })
+    if (!ok) return
     setEliminando(id)
     await supabase.from('grupos').delete().eq('id', id)
-    onRecargar(); setEliminando(null)
+    onRecargar()
+    setEliminando(null)
   }
   if (!grupos.length) return (
     <div className="text-center py-14 text-gray-400">
@@ -362,16 +280,17 @@ function TabGrupos({ grupos, onRecargar, onIrACampana }) {
           </button>
         </div>
       ))}
+      <ConfirmModal />
     </div>
   )
 }
 
 // ── TAB: Campaña ──────────────────────────────────────────────────────────────
 
-function TabCampana({ grupos, grupoInicial }) {
+function TabCampana({ grupos, grupoInicial, mensajeInicial = '' }) {
   const [grupoId, setGrupoId]           = useState(grupoInicial?.id ?? '')
   const [nombreCampana, setNombreCampana] = useState('')
-  const [mensaje, setMensaje]           = useState('')
+  const [mensaje, setMensaje]           = useState(mensajeInicial)
   const [plantillas, setPlantillas]     = useState([])
   const [yaEnviados, setYaEnviados]     = useState(new Set())
   const [modalAbierto, setModalAbierto] = useState(false)
@@ -688,10 +607,17 @@ function TabCampana({ grupos, grupoInicial }) {
 // ── Página principal ──────────────────────────────────────────────────────────
 
 export default function Campanas() {
-  const [tab, setTab]             = useState('importar')
-  const [grupos, setGrupos]       = useState([])
-  const [cargando, setCargando]   = useState(true)
-  const [grupoParaCampana, setGrupoParaCampana] = useState(null)
+  const location = useLocation()
+  const routeState = location.state ?? {}
+
+  const [tab, setTab]           = useState(routeState.deudores ? 'campana' : 'importar')
+  const [grupos, setGrupos]     = useState([])
+  const [cargando, setCargando] = useState(true)
+  const [grupoParaCampana, setGrupoParaCampana] = useState(
+    routeState.deudores
+      ? { id: '__deudores__', nombre: 'Alumnos con cuota próxima', contactos: routeState.deudores }
+      : null
+  )
 
   const cargarGrupos = async () => {
     setCargando(true)
@@ -706,6 +632,11 @@ export default function Campanas() {
     setGrupoParaCampana(grupo)
     setTab('campana')
   }
+
+  // If there's a synthetic deudores group, add it at the top of the list
+  const gruposConDeudores = grupoParaCampana?.id === '__deudores__'
+    ? [grupoParaCampana, ...grupos]
+    : grupos
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -727,7 +658,13 @@ export default function Campanas() {
               ? <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-primary-600" /></div>
               : <TabGrupos grupos={grupos} onRecargar={cargarGrupos} onIrACampana={irACampana} />
           )}
-          {tab === 'campana' && <TabCampana grupos={grupos} grupoInicial={grupoParaCampana} />}
+          {tab === 'campana' && (
+            <TabCampana
+              grupos={gruposConDeudores}
+              grupoInicial={grupoParaCampana}
+              mensajeInicial={routeState.mensajeInicial ?? ''}
+            />
+          )}
         </div>
       </div>
     </div>

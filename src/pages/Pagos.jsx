@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useConfirm } from '../hooks/useConfirm'
 import { Plus, X, Loader2, Trash2, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { generateReceipt } from '../lib/generateReceipt'
@@ -39,6 +40,7 @@ const EMPTY_FORM = {
 }
 
 export default function Pagos() {
+  const { confirm, ConfirmModal } = useConfirm()
   const [pagos, setPagos]           = useState([])
   const [alumnos, setAlumnos]       = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
@@ -142,7 +144,12 @@ export default function Pagos() {
   }
 
   const handleDelete = async (id) => {
-    if (!confirm('¿Eliminar este pago? Esta acción no se puede deshacer.')) return
+    const ok = await confirm({
+      title: 'Eliminar pago',
+      message: '¿Estás seguro que querés eliminar este pago? Esta acción no se puede deshacer.',
+      variant: 'danger',
+    })
+    if (!ok) return
     await supabase.from('pagos').delete().eq('id', id)
     fetchAll()
   }
@@ -328,6 +335,7 @@ export default function Pagos() {
           </div>
         </div>
       )}
+      <ConfirmModal />
     </div>
   )
 }

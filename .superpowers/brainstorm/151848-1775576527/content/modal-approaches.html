@@ -1,0 +1,42 @@
+<h2>Feature #4 — Enfoques de implementación</h2>
+<p class="subtitle">3 formas de reemplazar los <code>confirm()</code> y <code>alert()</code> en el proyecto</p>
+
+<div class="options">
+
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Un componente <code>ConfirmModal</code> reutilizable</h3>
+      <p>Se crea un único componente que acepta props: <code>title</code>, <code>message</code>, <code>onConfirm</code>, <code>onCancel</code>, <code>variant</code> (danger/info). Cada página lo monta en su propio estado local. 3 archivos modificados + 1 componente nuevo.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Simple de entender</li><li>Sin contexto global</li><li>Cada página es independiente</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Estado repetido en cada página</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B ⭐ Recomendado</div>
+    <div class="content">
+      <h3>Hook <code>useConfirm</code> + componente</h3>
+      <p>Un hook que devuelve <code>{ confirm, ConfirmModal }</code>. En cada página: <code>const { confirm, ConfirmModal } = useConfirm()</code> y se llama <code>await confirm({...})</code> como si fuera el <code>confirm()</code> nativo. El componente se monta al final del JSX.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>API casi idéntica al <code>confirm()</code> original</li><li>Limpio: no poluciona el estado del componente padre</li><li>Fácil de usar en el futuro</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Ligeramente más complejo que A</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Context global (<code>DialogProvider</code>)</h3>
+      <p>Un provider global en <code>App.jsx</code> que expone <code>useDialog()</code>. Un solo modal en toda la app, controlado desde cualquier componente sin montar nada localmente.</p>
+      <div class="pros-cons">
+        <div class="pros"><h4>Pros</h4><ul><li>Un solo modal en todo el DOM</li><li>Se puede llamar desde cualquier lado</li></ul></div>
+        <div class="cons"><h4>Cons</h4><ul><li>Más arquitectura para un cambio pequeño</li><li>Más difícil de debuggear</li></ul></div>
+      </div>
+    </div>
+  </div>
+
+</div>

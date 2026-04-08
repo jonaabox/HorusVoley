@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Users, DollarSign, AlertTriangle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { useConfirm } from '../hooks/useConfirm'
 
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -59,7 +60,7 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
   return mesesDeuda
 }
 
-function DeudorRow({ alumno }) {
+function DeudorRow({ alumno, confirm }) {
   const [expandido, setExpandido] = useState(false)
   const totalMeses = alumno.mesesDeuda.length
   const tieneVencidos = alumno.mesesDeuda.some(m => m.vencido)
@@ -140,10 +141,14 @@ Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíano
               target="_blank"
               rel="noreferrer"
               className="inline-flex max-w-fit items-center gap-2 bg-[#25D366] hover:bg-[#20bd5a] text-white px-4 py-2 rounded-lg text-xs font-bold transition-all shadow-sm"
-              onClick={(e) => {
+              onClick={async (e) => {
                 if (!alumno.telefono || numeroLimpio.length < 8) {
                   e.preventDefault()
-                  alert('Este alumno no tiene un número de teléfono válido registrado.')
+                  await confirm({
+                    title: 'Atención',
+                    message: 'Este alumno no tiene un número de teléfono válido registrado.',
+                    variant: 'info',
+                  })
                 }
               }}
             >
@@ -158,6 +163,7 @@ Si tienes alguna duda con los montos o ya realizaste el pago, por favor envíano
 }
 
 export default function Dashboard() {
+  const { confirm, ConfirmModal } = useConfirm()
   const [stats, setStats]     = useState({ totalAlumnos: 0, ingresosMes: 0, deudoresCount: 0 })
   const [deudores, setDeudores] = useState([])
   const [loading, setLoading]  = useState(true)
@@ -243,10 +249,11 @@ export default function Dashboard() {
           </div>
         ) : (
           <ul>
-            {deudores.map(a => <DeudorRow key={a.id} alumno={a} />)}
+            {deudores.map(a => <DeudorRow key={a.id} alumno={a} confirm={confirm} />)}
           </ul>
         )}
       </div>
+      <ConfirmModal />
     </div>
   )
 }
