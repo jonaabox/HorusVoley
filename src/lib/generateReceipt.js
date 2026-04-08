@@ -26,6 +26,7 @@ export async function generateReceipt(params) {
     pagoId, alumnoNombre, alumnoNivel, alumnoFrecuencia,
     monto, fechaPago, mes, anio, logoUrl,
     mesesPendientes = [],
+    tipo = 'normal',
   } = params
 
   const doc = new jsPDF({ unit: 'mm', format: 'a5', orientation: 'portrait' })
@@ -147,7 +148,10 @@ export async function generateReceipt(params) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(9)
   doc.setTextColor(...DARK)
-  doc.text(`Cuota mensual · ${MESES[mes - 1]} ${anio}`, 60, cy + 4)
+  const concepto = tipo === 'prueba'
+    ? `Clase de prueba (pago parcial) · ${MESES[mes - 1]} ${anio}`
+    : `Cuota mensual · ${MESES[mes - 1]} ${anio}`
+  doc.text(concepto, 60, cy + 4)
   cy += 9
 
   // Caja de monto
