@@ -23,6 +23,15 @@ const EMPTY_FORM = {
   horario_id:        '',
 }
 
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null
+  const hoy = new Date()
+  const nac = new Date(fechaNacimiento + 'T00:00:00')
+  let edad = hoy.getFullYear() - nac.getFullYear()
+  if (hoy.getMonth() < nac.getMonth() || (hoy.getMonth() === nac.getMonth() && hoy.getDate() < nac.getDate())) edad--
+  return edad
+}
+
 function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
@@ -42,14 +51,21 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
       continue
     }
 
-    const pagado = todosPagos.some(
+    const tieneNormal = todosPagos.some(
       p => p.alumno_id === alumno.id &&
            p.mes_correspondiente === mes &&
-           p.año_correspondiente === anio
+           p.año_correspondiente === anio &&
+           (p.tipo ?? 'normal') !== 'prueba'
     )
 
-    if (!pagado) {
-      mesesDeuda.push({ mes, anio })
+    if (!tieneNormal) {
+      const tienePrueba = todosPagos.some(
+        p => p.alumno_id === alumno.id &&
+             p.mes_correspondiente === mes &&
+             p.año_correspondiente === anio &&
+             p.tipo === 'prueba'
+      )
+      mesesDeuda.push({ mes, anio, parcial: tienePrueba })
     }
 
     cursor.setMonth(cursor.getMonth() + 1)
@@ -81,7 +97,7 @@ export default function Alumnos() {
     const [{ data: alumnosData }, { data: configData }, { data: pagosData }, { data: horariosData }] = await Promise.all([
       supabase.from('alumnos').select('*').order('nombre_completo'),
       supabase.from('configuracion').select('clave, valor'),
-      supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago'),
+      supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago, tipo'),
       supabase.from('horarios').select('*').order('hora_inicio'),
     ])
     
@@ -227,6 +243,7 @@ export default function Alumnos() {
               <thead className="bg-primary-950 text-primary-200 text-left">
                 <tr>
                   <th className="px-6 py-3 font-medium">Nombre</th>
+                  <th className="px-6 py-3 font-medium">Edad</th>
                   <th className="px-6 py-3 font-medium">Nivel</th>
                   <th className="px-6 py-3 font-medium">Grupo</th>
                   <th className="px-6 py-3 font-medium">Estado Cuota</th>
@@ -237,10 +254,12 @@ export default function Alumnos() {
               </thead>
               <tbody className="divide-y divide-gray-50">
                 {filtered.map(a => {
-                  const tieneDeuda = (a.mesesDeuda || []).length > 0;
                   return (
                   <tr key={a.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-gray-800">{a.nombre_completo}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {calcularEdad(a.fecha_nacimiento) !== null ? `${calcularEdad(a.fecha_nacimiento)} años` : '—'}
+                    </td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${NIVEL_COLOR[a.nivel]}`}>
                         {NIVEL_LABEL[a.nivel]}
@@ -261,11 +280,14 @@ export default function Alumnos() {
                       })()}
                     </td>
                     <td className="px-6 py-4">
-                      {tieneDeuda ? (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Al día</span>
-                      )}
+                      {(() => {
+                        const deuda = a.mesesDeuda || []
+                        const sinPago   = deuda.some(m => !m.parcial)
+                        const soloPrueba = deuda.length > 0 && !sinPago
+                        if (sinPago)    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
+                        if (soloPrueba) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba parcial</span>
+                        return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Al día</span>
+                      })()}
                     </td>
                     <td className="px-6 py-4 text-gray-600">
                       {a.frecuencia === 1 ? '1 vez/sem' : '2 veces/sem'}

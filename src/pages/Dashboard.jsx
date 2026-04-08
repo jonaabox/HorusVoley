@@ -46,7 +46,8 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
     const pagado = todosPagos.some(
       p => p.alumno_id === alumno.id &&
            p.mes_correspondiente === mes &&
-           p.año_correspondiente === anio
+           p.año_correspondiente === anio &&
+           (p.tipo ?? 'normal') !== 'prueba'
     )
 
     if (!pagado) {
@@ -185,7 +186,7 @@ export default function Dashboard() {
     // Alumnos activos + todos los pagos
     const [{ data: alumnosActivos }, { data: todosPagos }] = await Promise.all([
       supabase.from('alumnos').select('id, nombre_completo, frecuencia, fecha_inscripcion, telefono').eq('estado', 'activo'),
-      supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago'),
+      supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, fecha_pago, tipo'),
     ])
 
     // Ingresos del mes actual → usa fecha_pago (cuándo se cobró), no mes_correspondiente

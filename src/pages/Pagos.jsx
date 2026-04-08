@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, X, Loader2, Trash2, Download } from 'lucide-react'
+import { Plus, X, Loader2, Trash2, Download, CircleCheckBig } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { generateReceipt } from '../lib/generateReceipt'
 import logoUrl from '../IMG_6191-removebg-preview.png'
+
+const PRECIO_PRUEBA = 25000
 
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -21,7 +23,7 @@ function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc) {
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
     if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
-    const pagado = pagosAlumno.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio)
+    const pagado = pagosAlumno.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
     if (!pagado) {
       const vencimiento = new Date(anio, mes - 1, diaVenc)
       deuda.push({ mes, anio, vencido: hoy > vencimiento })
@@ -37,6 +39,7 @@ const EMPTY_FORM = {
   fecha_pago:          new Date().toISOString().split('T')[0],
   mes_correspondiente: new Date().getMonth() + 1,
   año_correspondiente: new Date().getFullYear(),
+  tipo:                'normal',
 }
 
 export default function Pagos() {
@@ -56,7 +59,7 @@ export default function Pagos() {
   const fetchAll = async () => {
     setLoading(true)
     const [{ data: pagosData }, { data: alumnosData }, { data: configData }] = await Promise.all([
-      supabase.from('pagos').select('*, alumnos(nombre_completo, nivel, frecuencia)').order('fecha_pago', { ascending: false }),
+      supabase.from('pagos').select('*, alumnos(nombre_completo, nivel, frecuencia, id)').order('fecha_pago', { ascending: false }),
       supabase.from('alumnos').select('id, nombre_completo, frecuencia, nivel').eq('estado', 'activo').order('nombre_completo'),
       supabase.from('configuracion').select('clave, valor'),
     ])
@@ -78,8 +81,29 @@ export default function Pagos() {
 
   const handleAlumnoChange = (alumnoId) => {
     const alumno = alumnos.find(a => a.id === alumnoId)
-    const monto  = alumno ? precios[alumno.frecuencia] : ''
+    const monto  = alumno ? (form.tipo === 'prueba' ? PRECIO_PRUEBA : precios[alumno.frecuencia]) : ''
     setForm(f => ({ ...f, alumno_id: alumnoId, monto: String(monto) }))
+  }
+
+  const handleTipoChange = (tipo) => {
+    const alumno = alumnos.find(a => a.id === form.alumno_id)
+    const monto  = tipo === 'prueba' ? PRECIO_PRUEBA : (alumno ? precios[alumno.frecuencia] : '')
+    setForm(f => ({ ...f, tipo, monto: String(monto) }))
+  }
+
+  const openCompletar = (pago) => {
+    const alumno = alumnos.find(a => a.id === pago.alumno_id)
+    const montoComplemento = alumno ? Math.max(0, precios[alumno.frecuencia] - PRECIO_PRUEBA) : ''
+    setForm({
+      alumno_id:           pago.alumno_id,
+      monto:               String(montoComplemento),
+      fecha_pago:          new Date().toISOString().split('T')[0],
+      mes_correspondiente: pago.mes_correspondiente,
+      año_correspondiente: pago.año_correspondiente,
+      tipo:                'normal',
+    })
+    setError('')
+    setModalOpen(true)
   }
 
   const handleSave = async (e) => {
@@ -92,6 +116,7 @@ export default function Pagos() {
       monto:               parseFloat(form.monto),
       mes_correspondiente: parseInt(form.mes_correspondiente),
       año_correspondiente: parseInt(form.año_correspondiente),
+      tipo:                form.tipo,
     }
 
     const { data: nuevoPago, error: err } = await supabase
@@ -136,6 +161,7 @@ export default function Pagos() {
         anio:             pago.año_correspondiente,
         logoUrl,
         mesesPendientes,
+        tipo:             pago.tipo ?? 'normal',
       })
     } catch (e) {
       console.error('Error generando recibo:', e)
@@ -192,13 +218,24 @@ export default function Pagos() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {pagos.map(p => (
-                  <tr key={p.id} className="hover:bg-gray-50 transition-colors">
+                {pagos.map(p => {
+                  const esPrueba = p.tipo === 'prueba'
+                  return (
+                  <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${esPrueba ? 'bg-amber-50/40' : ''}`}>
                     <td className="px-6 py-4 font-medium text-gray-800">
                       {p.alumnos?.nombre_completo ?? '—'}
                     </td>
-                    <td className="px-6 py-4 text-green-700 font-semibold">
-                      Gs. {parseFloat(p.monto).toLocaleString('es-PY')}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-semibold ${esPrueba ? 'text-amber-700' : 'text-green-700'}`}>
+                          Gs. {parseFloat(p.monto).toLocaleString('es-PY')}
+                        </span>
+                        {esPrueba && (
+                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                            Prueba
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-gray-600">
                       {new Date(p.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}
@@ -208,6 +245,16 @@ export default function Pagos() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex justify-end gap-1">
+                        {esPrueba && (
+                          <button
+                            onClick={() => openCompletar(p)}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition"
+                            title="Registrar pago restante"
+                          >
+                            <CircleCheckBig size={13} />
+                            Completar
+                          </button>
+                        )}
                         <button
                           onClick={() => downloadReceipt(p)}
                           disabled={downloading === p.id}
@@ -229,7 +276,8 @@ export default function Pagos() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                )})}
+
               </tbody>
             </table>
           </div>
@@ -248,6 +296,40 @@ export default function Pagos() {
             </div>
 
             <form onSubmit={handleSave} className="px-6 py-6 space-y-4">
+              {/* Tipo de pago */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleTipoChange('normal')}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition text-left ${
+                    form.tipo === 'normal'
+                      ? 'border-primary-600 bg-primary-50 text-primary-800'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold">Cuota normal</div>
+                  <div className="text-xs opacity-70">Pago completo del mes</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTipoChange('prueba')}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition text-left ${
+                    form.tipo === 'prueba'
+                      ? 'border-amber-500 bg-amber-50 text-amber-800'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold">Clase de prueba</div>
+                  <div className="text-xs opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} parcial</div>
+                </button>
+              </div>
+
+              {form.tipo === 'prueba' && (
+                <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-800">
+                  <span>El alumno podrá completar el pago del mes en otro momento usando el botón <strong>Completar</strong> en la lista.</span>
+                </div>
+              )}
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Alumno *</label>
                 <select
@@ -273,9 +355,14 @@ export default function Pagos() {
                     onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
-                  {form.alumno_id && (
+                  {form.alumno_id && form.tipo === 'normal' && (
                     <p className="text-xs text-gray-400 mt-1">
-                      Precio configurado: Gs. {precios[alumnos.find(a => a.id === form.alumno_id)?.frecuencia]?.toLocaleString('es-PY')}
+                      Precio completo: Gs. {precios[alumnos.find(a => a.id === form.alumno_id)?.frecuencia]?.toLocaleString('es-PY')}
+                    </p>
+                  )}
+                  {form.alumno_id && form.tipo === 'prueba' && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Resta: Gs. {Math.max(0, (precios[alumnos.find(a => a.id === form.alumno_id)?.frecuencia] ?? 0) - PRECIO_PRUEBA).toLocaleString('es-PY')} para completar
                     </p>
                   )}
                 </div>

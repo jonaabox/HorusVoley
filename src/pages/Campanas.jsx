@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import {
   FileSpreadsheet, X, Plus, Eye, Megaphone, FolderPlus, Trash2,
   Loader2, Check, MessageSquare, Send, Users, BookMarked,
-  ChevronDown, Save, BookOpen, AlertCircle
+  ChevronDown, Save, BookOpen, AlertCircle, Filter, UserCheck
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useConfirm } from '../hooks/useConfirm'
@@ -235,6 +235,200 @@ function TabImportar({ onRecargarGrupos }) {
   )
 }
 
+// ── TAB: Desde alumnos ───────────────────────────────────────────────────────
+
+function calcularTieneDeuda(alumno, pagos, hoy, diaVenc) {
+  const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
+  let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
+  const limiteActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
+  while (cursor <= limiteActual) {
+    const mes  = cursor.getMonth() + 1
+    const anio = cursor.getFullYear()
+    const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
+    const vencioHoy = hoy.getDate() > diaVenc
+    if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
+    const pagado = pagos.some(p => p.alumno_id === alumno.id && p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+    if (!pagado) return true
+    cursor.setMonth(cursor.getMonth() + 1)
+  }
+  return false
+}
+
+function TabDesdeAlumnos({ onRecargarGrupos }) {
+  const [alumnos, setAlumnos]         = useState([])
+  const [horarios, setHorarios]       = useState([])
+  const [cargando, setCargando]       = useState(true)
+  const [filtroDeuda, setFiltroDeuda] = useState(false)
+  const [filtroHorario, setFiltroHorario]       = useState('')
+  const [filtroFrecuencia, setFiltroFrecuencia] = useState('')
+  const [filtroEstado, setFiltroEstado]         = useState('activo')
+  const [nombreGrupo, setNombreGrupo] = useState('')
+  const [guardando, setGuardando]     = useState(false)
+  const [exito, setExito]             = useState('')
+  const [error, setError]             = useState('')
+
+  useEffect(() => {
+    const load = async () => {
+      const [
+        { data: alumnosData },
+        { data: pagosData },
+        { data: horariosData },
+        { data: configData },
+      ] = await Promise.all([
+        supabase.from('alumnos').select('*').order('nombre_completo'),
+        supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, tipo'),
+        supabase.from('horarios').select('*').order('hora_inicio'),
+        supabase.from('configuracion').select('clave, valor'),
+      ])
+      const diaVenc = parseInt(configData?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const hoy = new Date()
+      setAlumnos((alumnosData ?? []).map(a => ({
+        ...a,
+        tieneDeuda: calcularTieneDeuda(a, pagosData ?? [], hoy, diaVenc),
+      })))
+      setHorarios(horariosData ?? [])
+      setCargando(false)
+    }
+    load()
+  }, [])
+
+  const filtrados = alumnos.filter(a => {
+    if (filtroEstado && a.estado !== filtroEstado) return false
+    if (filtroDeuda && !a.tieneDeuda) return false
+    if (filtroHorario && a.horario_id !== filtroHorario) return false
+    if (filtroFrecuencia && a.frecuencia !== parseInt(filtroFrecuencia)) return false
+    return true
+  })
+
+  const conTelefono = filtrados.filter(a => a.telefono)
+
+  const buildDescripcion = () => {
+    const parts = []
+    if (filtroDeuda) parts.push('con deuda')
+    if (filtroHorario) {
+      const h = horarios.find(h => h.id === filtroHorario)
+      if (h) parts.push(`horario ${h.nombre}`)
+    }
+    if (filtroFrecuencia) parts.push(`${filtroFrecuencia}x/sem`)
+    if (filtroEstado) parts.push(filtroEstado)
+    return parts.join(', ')
+  }
+
+  const guardar = async () => {
+    if (!nombreGrupo.trim() || !conTelefono.length) return
+    setGuardando(true)
+    setError('')
+    const contactos = conTelefono.map(a => ({ telefono: a.telefono, nombre: a.nombre_completo }))
+    const { error: err } = await supabase.from('grupos').insert({
+      nombre: nombreGrupo.trim(),
+      descripcion: buildDescripcion(),
+      contactos,
+    })
+    setGuardando(false)
+    if (err) { setError(err.message); return }
+    setExito(`Grupo "${nombreGrupo.trim()}" guardado (${contactos.length} contactos)`)
+    setNombreGrupo('')
+    onRecargarGrupos()
+    setTimeout(() => setExito(''), 3000)
+  }
+
+  if (cargando) return (
+    <div className="flex justify-center py-10">
+      <Loader2 size={24} className="animate-spin text-primary-600" />
+    </div>
+  )
+
+  return (
+    <div className="space-y-5">
+      {/* Filtros */}
+      <div className="border border-gray-200 rounded-xl p-4 space-y-4">
+        <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+          <Filter size={14} className="text-primary-700" />
+          Filtros
+        </h4>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox" checked={filtroDeuda}
+            onChange={e => setFiltroDeuda(e.target.checked)}
+            className="w-4 h-4 accent-primary-700"
+          />
+          <span className="text-sm text-gray-700">Solo alumnos con deuda</span>
+        </label>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Horario / Grupo</label>
+          <select
+            value={filtroHorario} onChange={e => setFiltroHorario(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Todos los horarios</option>
+            {horarios.map(h => (
+              <option key={h.id} value={h.id}>
+                {h.nombre} — {h.dia_semana} {h.hora_inicio.slice(0, 5)}–{h.hora_fin.slice(0, 5)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Frecuencia</label>
+          <select
+            value={filtroFrecuencia} onChange={e => setFiltroFrecuencia(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Todas</option>
+            <option value="1">1 vez/semana</option>
+            <option value="2">2 veces/semana</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">Estado</label>
+          <select
+            value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
+            <option value="">Todos</option>
+            <option value="activo">Activos</option>
+            <option value="inactivo">Inactivos</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Resultado */}
+      <div className={`rounded-lg px-4 py-3 text-sm ${conTelefono.length > 0 ? 'bg-primary-50 text-primary-800' : 'bg-gray-50 text-gray-500'}`}>
+        <strong>{filtrados.length}</strong> alumnos coinciden ·{' '}
+        <strong className={conTelefono.length > 0 ? 'text-primary-700' : ''}>{conTelefono.length}</strong> con teléfono
+        {filtrados.length > conTelefono.length && (
+          <span className="text-xs text-gray-400 ml-1">
+            ({filtrados.length - conTelefono.length} sin teléfono serán omitidos)
+          </span>
+        )}
+      </div>
+
+      {/* Guardar grupo */}
+      <div className="flex gap-2">
+        <input
+          value={nombreGrupo} onChange={e => setNombreGrupo(e.target.value)}
+          placeholder="Nombre del grupo..."
+          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+        />
+        <button
+          onClick={guardar}
+          disabled={!nombreGrupo.trim() || !conTelefono.length || guardando}
+          className="px-4 py-2 bg-primary-800 hover:bg-primary-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition flex items-center gap-1.5"
+        >
+          {guardando ? <Loader2 size={14} className="animate-spin" /> : <><Save size={14} />Guardar</>}
+        </button>
+      </div>
+
+      {error && <p className="text-red-500 text-sm bg-red-50 px-3 py-2 rounded-lg">{error}</p>}
+      {exito && <p className="text-green-600 text-sm bg-green-50 px-3 py-2 rounded-lg flex items-center gap-2"><Check size={14} />{exito}</p>}
+    </div>
+  )
+}
+
 // ── TAB: Grupos ───────────────────────────────────────────────────────────────
 
 function TabGrupos({ grupos, onRecargar, onIrACampana }) {
@@ -256,7 +450,7 @@ function TabGrupos({ grupos, onRecargar, onIrACampana }) {
   if (!grupos.length) return (
     <div className="text-center py-14 text-gray-400">
       <Users size={36} className="mx-auto mb-3 opacity-40" />
-      <p className="text-sm">Sin grupos guardados. Importa un Excel primero.</p>
+      <p className="text-sm">Sin grupos guardados. Importa un Excel o creá uno desde alumnos.</p>
     </div>
   )
   return (
@@ -647,12 +841,14 @@ export default function Campanas() {
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="flex border-b border-gray-100 overflow-x-auto">
-          <Tab label="Importar Excel"  icon={FileSpreadsheet} active={tab === 'importar'} onClick={() => setTab('importar')} />
-          <Tab label="Grupos"          icon={Users}           active={tab === 'grupos'}   onClick={() => setTab('grupos')}   badge={grupos.length || null} />
-          <Tab label="Enviar campaña"  icon={Megaphone}       active={tab === 'campana'}  onClick={() => setTab('campana')}  />
+          <Tab label="Importar Excel"    icon={FileSpreadsheet} active={tab === 'importar'}  onClick={() => setTab('importar')} />
+          <Tab label="Desde alumnos"     icon={UserCheck}       active={tab === 'alumnos'}   onClick={() => setTab('alumnos')}  />
+          <Tab label="Grupos"            icon={Users}           active={tab === 'grupos'}    onClick={() => setTab('grupos')}   badge={grupos.length || null} />
+          <Tab label="Enviar campaña"    icon={Megaphone}       active={tab === 'campana'}   onClick={() => setTab('campana')}  />
         </div>
         <div className="p-6">
           {tab === 'importar' && <TabImportar onRecargarGrupos={cargarGrupos} />}
+          {tab === 'alumnos'  && <TabDesdeAlumnos onRecargarGrupos={cargarGrupos} />}
           {tab === 'grupos' && (
             cargando
               ? <div className="flex justify-center py-10"><Loader2 size={24} className="animate-spin text-primary-600" /></div>
