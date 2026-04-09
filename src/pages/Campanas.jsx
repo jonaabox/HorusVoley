@@ -79,20 +79,56 @@ function MessageEditor({ columnas, mensaje, onChange }) {
 
 // ── TAB: Importar ─────────────────────────────────────────────────────────────
 
-function TabImportar({ onRecargarGrupos }) {
-  const [archivo, setArchivo]     = useState(null)
-  const [columnas, setColumnas]   = useState([])
-  const [filas, setFilas]         = useState([])
-  const [colTel, setColTel]       = useState('')
-  const [prefijo, setPrefijo]     = useState('595')
+const OPS_NUMERO = ['>', '<', '>=', '<=', '=', '≠']
+const OPS_TEXTO  = ['contiene', 'no contiene', 'es igual a', 'empieza con']
+
+function detectarTipo(col, filas) {
+  const vals = filas.map(r => r[col]).filter(v => v !== '' && v != null)
+  if (!vals.length) return 'texto'
+  const num = vals.filter(v => !isNaN(parseFloat(String(v).replace(',', '.'))))
+  return num.length / vals.length > 0.7 ? 'numero' : 'texto'
+}
+
+function aplicarFiltro(valor, op, filtroVal, tipo) {
+  const v  = String(valor  ?? '').trim()
+  const fv = String(filtroVal ?? '').trim()
+  if (!fv) return true
+  if (tipo === 'numero') {
+    const n  = parseFloat(v.replace(',', '.'))
+    const fn = parseFloat(fv.replace(',', '.'))
+    if (isNaN(n)) return false
+    if (op === '>')  return n > fn
+    if (op === '<')  return n < fn
+    if (op === '>=') return n >= fn
+    if (op === '<=') return n <= fn
+    if (op === '=')  return n === fn
+    if (op === '≠')  return n !== fn
+  } else {
+    const vl  = v.toLowerCase()
+    const fvl = fv.toLowerCase()
+    if (op === 'contiene')    return vl.includes(fvl)
+    if (op === 'no contiene') return !vl.includes(fvl)
+    if (op === 'es igual a')  return vl === fvl
+    if (op === 'empieza con') return vl.startsWith(fvl)
+  }
+  return true
+}
+
+function TabImportar({ onRecargarGrupos, onIrACampana }) {
+  const [archivo, setArchivo]         = useState(null)
+  const [columnas, setColumnas]       = useState([])
+  const [filas, setFilas]             = useState([])
+  const [colTel, setColTel]           = useState('')
+  const [prefijo, setPrefijo]         = useState('595')
   const [nombreGrupo, setNombreGrupo] = useState('')
-  const [colGrupo, setColGrupo]   = useState('')
-  const [guardando, setGuardando] = useState(false)
-  const [exito, setExito]         = useState('')
-  const [error, setError]         = useState('')
+  const [colGrupo, setColGrupo]       = useState('')
+  const [guardando, setGuardando]     = useState(false)
+  const [exito, setExito]             = useState('')
+  const [error, setError]             = useState('')
+  const [filtros, setFiltros]         = useState([])
 
   const procesarArchivo = f => {
-    setError(''); setArchivo(f)
+    setError(''); setArchivo(f); setFiltros([])
     const reader = new FileReader()
     reader.onload = e => {
       try {
@@ -109,6 +145,7 @@ function TabImportar({ onRecargarGrupos }) {
     reader.readAsArrayBuffer(f)
   }
 
+  // ── Contactos base (desduplicados por teléfono) ──────────────────────────
   const contactosProcesados = (() => {
     const mapa = new Map()
     const colNombre = columnas.find(c => /^nombres?$/i.test(c)) ?? columnas.find(c => /nombre|name/i.test(c))
@@ -120,14 +157,13 @@ function TabImportar({ onRecargarGrupos }) {
         contacto._nombres = colNombre ? [String(row[colNombre] ?? '').trim()].filter(Boolean) : []
         mapa.set(t, contacto)
       } else if (colNombre) {
-        const existente = mapa.get(t)
+        const existente  = mapa.get(t)
         const nombreNuevo = String(row[colNombre] ?? '').trim()
-        if (nombreNuevo && !existente._nombres.includes(nombreNuevo)) {
-          existente._nombres.push(nombreNuevo)
-        }
+        if (nombreNuevo && !existente._nombres.includes(nombreNuevo)) existente._nombres.push(nombreNuevo)
       }
     }
     return [...mapa.values()].map(({ _nombres, ...c }) => {
+      const colNombre = columnas.find(c => /^nombres?$/i.test(c)) ?? columnas.find(c => /nombre|name/i.test(c))
       if (colNombre && _nombres.length > 0) {
         c[colNombre] = _nombres.length === 1
           ? _nombres[0]
@@ -137,6 +173,39 @@ function TabImportar({ onRecargarGrupos }) {
     })
   })()
 
+  // ── Aplicar filtros ──────────────────────────────────────────────────────
+  const filtrosActivos = filtros.filter(f => f.col && f.val.trim())
+  const contactosFiltrados = filtrosActivos.length === 0
+    ? contactosProcesados
+    : contactosProcesados.filter(c =>
+        filtrosActivos.every(f => {
+          const tipo = detectarTipo(f.col, filas)
+          return aplicarFiltro(c[f.col], f.op, f.val, tipo)
+        })
+      )
+
+  // ── Gestión de filtros ───────────────────────────────────────────────────
+  const addFiltro = () => {
+    const col  = columnas.find(c => c !== colTel) ?? columnas[0] ?? ''
+    const tipo = col ? detectarTipo(col, filas) : 'texto'
+    setFiltros(f => [...f, { id: Date.now(), col, op: tipo === 'numero' ? '>' : 'contiene', val: '' }])
+  }
+
+  const updateFiltro = (id, key, val) =>
+    setFiltros(f => f.map(x => {
+      if (x.id !== id) return x
+      const next = { ...x, [key]: val }
+      if (key === 'col') {
+        const tipo = detectarTipo(val, filas)
+        next.op  = tipo === 'numero' ? '>' : 'contiene'
+        next.val = ''
+      }
+      return next
+    }))
+
+  const removeFiltro = (id) => setFiltros(f => f.filter(x => x.id !== id))
+
+  // ── Guardar / Enviar ─────────────────────────────────────────────────────
   const gruposUnicos = colGrupo ? [...new Set(filas.map(r => r[colGrupo]).filter(Boolean))] : []
 
   const guardar = async (nombre, contactos, desc = '') => {
@@ -150,13 +219,25 @@ function TabImportar({ onRecargarGrupos }) {
     setTimeout(() => setExito(''), 3000)
   }
 
-  const guardarTodos = () => guardar(nombreGrupo, contactosProcesados)
+  const guardarFiltrados = () => guardar(
+    nombreGrupo,
+    contactosFiltrados,
+    filtrosActivos.length ? `Filtrado: ${filtrosActivos.map(f => `${f.col} ${f.op} ${f.val}`).join(' · ')}` : ''
+  )
+
   const guardarPorColumna = () =>
     gruposUnicos.forEach(v => {
-      const m = contactosProcesados.filter(c => c[colGrupo] === v)
+      const m = contactosFiltrados.filter(c => c[colGrupo] === v)
       if (m.length) guardar(String(v), m, `De ${archivo?.name}`)
     })
 
+  const enviarDirectamente = () => {
+    if (!contactosFiltrados.length) return
+    const nombre = nombreGrupo.trim() || 'Filtrado'
+    onIrACampana({ id: `__temp_${Date.now()}__`, nombre, contactos: contactosFiltrados })
+  }
+
+  // ── Render ───────────────────────────────────────────────────────────────
   return (
     <div className="space-y-5">
       {!archivo ? <UploadZone onFile={procesarArchivo} /> : (
@@ -168,11 +249,13 @@ function TabImportar({ onRecargarGrupos }) {
               <p className="text-xs text-green-600">{filas.length} filas · {columnas.length} columnas</p>
             </div>
           </div>
-          <button onClick={() => { setArchivo(null); setFilas([]); setColumnas([]) }} className="text-green-600 hover:text-green-800"><X size={16} /></button>
+          <button onClick={() => { setArchivo(null); setFilas([]); setColumnas([]); setFiltros([]) }}
+            className="text-green-600 hover:text-green-800"><X size={16} /></button>
         </div>
       )}
 
       {columnas.length > 0 && <>
+        {/* Teléfono + prefijo */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-gray-600 mb-1">Columna WhatsApp</label>
@@ -189,24 +272,129 @@ function TabImportar({ onRecargarGrupos }) {
           </div>
         </div>
 
+        {/* Total base */}
         <div className="bg-primary-50 px-4 py-2.5 rounded-lg text-sm text-primary-800">
           <strong>{contactosProcesados.length}</strong> contactos con número válido detectados
         </div>
 
-        <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2"><FolderPlus size={14} className="text-primary-700" />Guardar todos como un grupo</h4>
-          <div className="flex gap-2">
-            <input value={nombreGrupo} onChange={e => setNombreGrupo(e.target.value)} placeholder="Nombre del grupo..."
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-            <button onClick={guardarTodos} disabled={!nombreGrupo.trim() || guardando}
-              className="px-4 py-2 bg-primary-800 hover:bg-primary-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition">
-              {guardando ? <Loader2 size={14} className="animate-spin" /> : 'Guardar'}
+        {/* ── Filtros ── */}
+        <div className="border border-gray-200 rounded-xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 bg-gray-50">
+            <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+              <Filter size={14} className="text-primary-700" />
+              Filtrar contactos
+              {filtrosActivos.length > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-primary-100 text-primary-700 text-xs font-bold">
+                  {filtrosActivos.length}
+                </span>
+              )}
+            </h4>
+            <button
+              onClick={addFiltro}
+              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-lg bg-primary-800 hover:bg-primary-700 text-white transition"
+            >
+              <Plus size={12} /> Agregar filtro
             </button>
           </div>
+
+          {filtros.length > 0 && (
+            <div className="p-4 space-y-2 border-t border-gray-100">
+              {filtros.map(f => {
+                const tipo = f.col ? detectarTipo(f.col, filas) : 'texto'
+                const ops  = tipo === 'numero' ? OPS_NUMERO : OPS_TEXTO
+                return (
+                  <div key={f.id} className="flex gap-2 items-center">
+                    {/* Columna */}
+                    <select
+                      value={f.col}
+                      onChange={e => updateFiltro(f.id, 'col', e.target.value)}
+                      className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {columnas.filter(c => c !== colTel).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {/* Operador */}
+                    <select
+                      value={f.op}
+                      onChange={e => updateFiltro(f.id, 'op', e.target.value)}
+                      className="w-36 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      {ops.map(op => <option key={op} value={op}>{op}</option>)}
+                    </select>
+                    {/* Valor */}
+                    <input
+                      type={tipo === 'numero' ? 'number' : 'text'}
+                      value={f.val}
+                      onChange={e => updateFiltro(f.id, 'val', e.target.value)}
+                      placeholder="Valor..."
+                      className="w-28 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                    {/* Quitar */}
+                    <button onClick={() => removeFiltro(f.id)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition">
+                      <X size={15} />
+                    </button>
+                  </div>
+                )
+              })}
+
+              {/* Resultado del filtro */}
+              <div className={`mt-2 px-3 py-2 rounded-lg text-sm font-medium flex items-center justify-between ${
+                filtrosActivos.length > 0
+                  ? 'bg-primary-50 text-primary-800'
+                  : 'bg-gray-50 text-gray-500'
+              }`}>
+                <span>
+                  {filtrosActivos.length > 0
+                    ? <><strong>{contactosFiltrados.length}</strong> contactos coinciden{contactosFiltrados.length !== contactosProcesados.length && ` (de ${contactosProcesados.length})`}</>
+                    : 'Sin filtros activos — se usarán todos los contactos'
+                  }
+                </span>
+                {filtrosActivos.length > 0 && filtros.length > 0 && (
+                  <button onClick={() => setFiltros([])} className="text-xs text-gray-400 hover:text-red-500 transition ml-3">
+                    Limpiar
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* ── Guardar como grupo ── */}
         <div className="border border-gray-200 rounded-xl p-4 space-y-3">
-          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2"><Users size={14} className="text-primary-700" />Crear grupos por columna</h4>
+          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <FolderPlus size={14} className="text-primary-700" />
+            Guardar como grupo
+          </h4>
+          <div className="flex gap-2">
+            <input value={nombreGrupo} onChange={e => setNombreGrupo(e.target.value)}
+              placeholder="Nombre del grupo..."
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            <button onClick={guardarFiltrados}
+              disabled={!nombreGrupo.trim() || !contactosFiltrados.length || guardando}
+              className="px-4 py-2 bg-primary-800 hover:bg-primary-700 disabled:opacity-40 text-white rounded-lg text-sm font-medium transition whitespace-nowrap">
+              {guardando
+                ? <Loader2 size={14} className="animate-spin" />
+                : `Guardar (${contactosFiltrados.length})`
+              }
+            </button>
+          </div>
+          {/* Enviar directamente */}
+          <button
+            onClick={enviarDirectamente}
+            disabled={!contactosFiltrados.length}
+            className="w-full flex items-center justify-center gap-2 py-2 rounded-lg border border-[#25D366] text-[#25D366] hover:bg-[#25D366] hover:text-white disabled:opacity-40 text-sm font-medium transition"
+          >
+            <Send size={14} />
+            Enviar directamente sin guardar ({contactosFiltrados.length})
+          </button>
+        </div>
+
+        {/* ── Agrupar por columna ── */}
+        <div className="border border-gray-200 rounded-xl p-4 space-y-3">
+          <h4 className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+            <Users size={14} className="text-primary-700" />
+            Crear grupos por columna
+          </h4>
           <div className="flex gap-2">
             <select value={colGrupo} onChange={e => setColGrupo(e.target.value)}
               className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -221,10 +409,15 @@ function TabImportar({ onRecargarGrupos }) {
           {colGrupo && gruposUnicos.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {gruposUnicos.map(v => {
-                const n = contactosProcesados.filter(c => c[colGrupo] === v).length
+                const n = contactosFiltrados.filter(c => c[colGrupo] === v).length
                 return <span key={v} className="px-2 py-0.5 bg-primary-50 text-primary-700 rounded-full text-xs border border-primary-200">{v} ({n})</span>
               })}
             </div>
+          )}
+          {colGrupo && filtrosActivos.length > 0 && (
+            <p className="text-xs text-amber-700 bg-amber-50 px-3 py-1.5 rounded-lg">
+              Los grupos se crearán solo con los contactos que coinciden con los filtros activos.
+            </p>
           )}
         </div>
       </>}
@@ -847,7 +1040,7 @@ export default function Campanas() {
           <Tab label="Enviar campaña"    icon={Megaphone}       active={tab === 'campana'}   onClick={() => setTab('campana')}  />
         </div>
         <div className="p-6">
-          {tab === 'importar' && <TabImportar onRecargarGrupos={cargarGrupos} />}
+          {tab === 'importar' && <TabImportar onRecargarGrupos={cargarGrupos} onIrACampana={irACampana} />}
           {tab === 'alumnos'  && <TabDesdeAlumnos onRecargarGrupos={cargarGrupos} />}
           {tab === 'grupos' && (
             cargando
