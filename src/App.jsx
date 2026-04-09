@@ -13,6 +13,7 @@ import Configuracion from './pages/Configuracion'
 import Campanas from './pages/Campanas'
 import Materiales from './pages/Materiales'
 import Validacion from './pages/Validacion'
+import Logs from './pages/Logs'
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
             <Route path="configuracion" element={<Configuracion />} />
             <Route path="materiales"    element={<Materiales />}    />
             <Route path="campanas"      element={<Campanas />}      />
+            <Route path="logs"          element={<Logs />}          />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -1,7 +1,7 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard, Users, CreditCard, BarChart3, ClipboardList,
-  Settings, LogOut, Megaphone, SearchCheck, BookOpen,
+  Settings, LogOut, Megaphone, SearchCheck, BookOpen, ScrollText,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useDebtAlert } from '../context/DebtAlertContext'
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/materiales',  icon: BookOpen,         label: 'Materiales'     },
   { to: '/campanas',    icon: Megaphone,        label: 'Campañas'       },
   { to: '/validar',     icon: SearchCheck,      label: 'Validar Recibo' },
+  { to: '/logs',        icon: ScrollText,       label: 'Logs'           },
 ]
 
 export default function Sidebar({ onMobileClose }) {
