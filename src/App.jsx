@@ -14,6 +14,7 @@ import Campanas from './pages/Campanas'
 import Materiales from './pages/Materiales'
 import Validacion from './pages/Validacion'
 import Logs from './pages/Logs'
+import AlumnoDetalle from './pages/AlumnoDetalle'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
           >
             <Route index             element={<Dashboard />}    />
             <Route path="alumnos"    element={<Alumnos />}      />
+            <Route path="alumnos/:id" element={<AlumnoDetalle />} />
             <Route path="asistencia" element={<Asistencia />}   />
             <Route path="pagos"      element={<Pagos />}        />
             <Route path="reportes"   element={<Reportes />}     />

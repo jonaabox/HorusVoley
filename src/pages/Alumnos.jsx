@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, Search, Pencil, Trash2, X, Loader2 } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, Loader2, ExternalLink } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
 const NIVELES = ['principiante', 'intermedio', 'avanzado']
@@ -76,6 +77,7 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
 
 export default function Alumnos() {
   const { confirm, ConfirmModal } = useConfirm()
+  const navigate = useNavigate()
   const [alumnos, setAlumnos]       = useState([])
   const [horarios, setHorarios]     = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
@@ -256,7 +258,15 @@ export default function Alumnos() {
                 {filtered.map(a => {
                   return (
                   <tr key={a.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-800">{a.nombre_completo}</td>
+                    <td className="px-6 py-4">
+                      <button
+                        onClick={() => navigate(`/alumnos/${a.id}`)}
+                        className="flex items-center gap-1.5 font-medium text-gray-800 hover:text-primary-700 transition group"
+                      >
+                        {a.nombre_completo}
+                        <ExternalLink size={12} className="opacity-0 group-hover:opacity-60 transition" />
+                      </button>
+                    </td>
                     <td className="px-6 py-4 text-gray-600">
                       {calcularEdad(a.fecha_nacimiento) !== null ? `${calcularEdad(a.fecha_nacimiento)} años` : '—'}
                     </td>
