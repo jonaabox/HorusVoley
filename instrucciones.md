@@ -1,41 +1,45 @@
-"Actúa como un Desarrollador Senior Fullstack. Necesito crear una aplicación web desde cero para una Academia de Vóley llamada 'Vóley Control'. La aplicación debe ser gratuita de mantener, por lo que usaremos Vite + React (JavaScript) para el frontend, Tailwind CSS para el diseño y Supabase para la base de datos y autenticación.
+Sistema de Logging y Observabilidad para CRM
+"Actúa como un Principal Fullstack Developer. Necesito implementar un Sistema de Logging y Monitoreo de Errores para mi CRM de Vóley que ya utiliza Supabase y React.
 
-Estructura de la Base de Datos (Tablas en Supabase):
+Objetivo: Crear una infraestructura que capture errores en el frontend y los almacene en la base de datos para auditoría, además de una interfaz administrativa para visualizarlos.
 
-alumnos: id, nombre_completo, fecha_nacimiento, telefono, fecha_inscripcion, estado (activo/inactivo).
+Requerimientos Técnicos:
 
-pagos: id, alumno_id (FK), monto, fecha_pago, mes_correspondiente, año_correspondiente.
+Esquema de Base de Datos (SQL): Genera el script para una tabla app_logs con: id (uuid), created_at, level (info, warning, error, critical), module (donde ocurrió), message, user_id y un campo metadata de tipo JSONB.
 
-cuotas: id, alumno_id (FK), fecha_vencimiento, estado_pago (pendiente/pagado).
+Servicio de Logger (Frontend):
 
-Requerimientos de la Interfaz (Dashboard):
+Crea un archivo logger.js que centralice los logs.
 
-Login: Pantalla de acceso con correo y contraseña usando Supabase Auth.
+Debe permitir enviar logs a la consola en desarrollo y guardarlos en Supabase solo si el nivel es 'warning' o superior.
 
-Layout Principal: Sidebar con navegación (Inicio, Alumnos, Pagos, Reportes).
+Debe capturar automáticamente el stack trace si se le pasa un objeto de error.
 
-Módulo Alumnos: - Tabla con lista completa.
+Componente de Visualización (Admin Log Viewer):
 
-Buscador por nombre.
+Crea un componente de React que sea una tabla profesional para el administrador.
 
-Formulario en un Modal para 'Crear Alumno'.
+Filtros: Por nivel (dropdown multi-select) y por módulo.
 
-Botones para Editar y Eliminar.
+Visualización de JSON: Usa un formato legible para la columna metadata.
 
-Dashboard / Inicio:
+Estilos: Usa Tailwind CSS. Los errores deben resaltar con fondo rojo suave y los warnings con naranja.
 
-Tarjetas con: Total de alumnos, Ingresos del mes actual, Alumnos con cuotas vencidas.
+Seguridad y Optimización:
 
-Sistema de Alertas: Lista de alumnos cuya cuota vence en menos de 5 días (usar colores: rojo para vencido, amarillo para próximo).
+Incluye la configuración de Row Level Security (RLS) en SQL para que solo los administradores puedan leer la tabla.
 
-Instrucciones Técnicas:
+Crea una función básica de limpieza (Clean-up) que simule borrar registros antiguos.
 
-Usa lucide-react para los iconos.
+Estructura del código:
 
-Usa react-router-dom para la navegación.
+Usa lucide-react para iconos de alerta y error.
 
-El diseño debe ser limpio, profesional, responsivo y con colores inspirados en el deporte (azules, blancos y naranjas).
+Provee un ejemplo de cómo envolver la aplicación en un ErrorBoundary global que use este nuevo sistema de logger para capturar 'Crashes' inesperados."
 
-Implementa una función que compare la fecha actual con fecha_vencimiento para generar las alertas de cobro.
+Tips de Senior Developer para aplicar este prompt:
+ErrorBoundary: Cuando la IA te entregue el código, presta especial atención al ErrorBoundary. Es un componente de React que "ataja" los errores de toda la app para que la pantalla no se ponga en blanco. Es vital para la experiencia del usuario.
 
-Por favor, genera primero la estructura de archivos sugerida y luego el código principal para los componentes de la tabla de alumnos y la conexión con Supabase."
+Uso de JSONB: La columna metadata en Supabase es superpoderosa. Puedes guardar ahí desde el modelo de celular del usuario hasta el estado exacto de la variable que falló.
+
+No satures la DB: Asegúrate de que el logger no guarde "info" (como 'usuario abrió página x') en la base de datos, o llenarás tu cuota gratuita de Supabase muy rápido. Solo guarda lo que realmente necesites investigar (errores y alertas).
