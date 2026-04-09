@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, X, Loader2, Trash2, Download, CircleCheckBig } from 'lucide-react'
+import { Plus, X, Loader2, Trash2, Download, CircleCheckBig, ChevronDown, ChevronRight, User } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { generateReceipt } from '../lib/generateReceipt'
 import logoUrl from '../IMG_6191-removebg-preview.png'
@@ -53,6 +53,8 @@ export default function Pagos() {
   const [modalOpen, setModalOpen]   = useState(false)
   const [form, setForm]             = useState(EMPTY_FORM)
   const [error, setError]           = useState('')
+  const [filtroAlumno, setFiltroAlumno] = useState('')
+  const [expandidos, setExpandidos]     = useState({}) // grupoKey → bool
 
   useEffect(() => { fetchAll() }, [])
 
@@ -72,6 +74,30 @@ export default function Pagos() {
     }
     setLoading(false)
   }
+
+  // Agrupa pagos por (alumno_id, mes, año). Si hay prueba+normal para el mismo período,
+  // se muestran como una sola entrada "completada".
+  const grupos = useMemo(() => {
+    const filtrados = filtroAlumno
+      ? pagos.filter(p => p.alumno_id === filtroAlumno)
+      : pagos
+
+    const mapa = {}
+    filtrados.forEach(p => {
+      const key = `${p.alumno_id}-${p.mes_correspondiente}-${p.año_correspondiente}`
+      if (!mapa[key]) mapa[key] = { key, alumno_id: p.alumno_id, alumnos: p.alumnos, mes: p.mes_correspondiente, año: p.año_correspondiente, items: [] }
+      mapa[key].items.push(p)
+    })
+
+    return Object.values(mapa).sort((a, b) => {
+      const maxFechaA = Math.max(...a.items.map(p => new Date(p.fecha_pago).getTime()))
+      const maxFechaB = Math.max(...b.items.map(p => new Date(p.fecha_pago).getTime()))
+      return maxFechaB - maxFechaA
+    })
+  }, [pagos, filtroAlumno])
+
+  const toggleExpandido = (key) =>
+    setExpandidos(prev => ({ ...prev, [key]: !prev[key] }))
 
   const openCreate = () => {
     setForm(EMPTY_FORM)
@@ -183,7 +209,7 @@ export default function Pagos() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Pagos</h2>
           <p className="text-gray-500 text-sm mt-1">{pagos.length} pagos registrados</p>
@@ -197,14 +223,47 @@ export default function Pagos() {
         </button>
       </div>
 
+      {/* Filtro por alumno */}
+      <div className="flex items-center gap-3">
+        <div className="relative">
+          <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <select
+            value={filtroAlumno}
+            onChange={e => setFiltroAlumno(e.target.value)}
+            className="pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white min-w-[220px]"
+          >
+            <option value="">Todos los alumnos</option>
+            {alumnos.map(a => (
+              <option key={a.id} value={a.id}>{a.nombre_completo}</option>
+            ))}
+          </select>
+        </div>
+        {filtroAlumno && (
+          <button
+            onClick={() => setFiltroAlumno('')}
+            className="text-xs text-gray-400 hover:text-red-500 transition"
+          >
+            Limpiar filtro
+          </button>
+        )}
+        {filtroAlumno && (
+          <span className="text-xs text-gray-500">
+            {grupos.length} período{grupos.length !== 1 ? 's' : ''} ·{' '}
+            Gs. {pagos.filter(p => p.alumno_id === filtroAlumno).reduce((s, p) => s + parseFloat(p.monto || 0), 0).toLocaleString('es-PY')} total pagado
+          </span>
+        )}
+      </div>
+
       {/* Table */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16">
             <Loader2 size={28} className="animate-spin text-primary-600" />
           </div>
-        ) : pagos.length === 0 ? (
-          <p className="text-center text-gray-400 py-16 text-sm">No hay pagos registrados aún.</p>
+        ) : grupos.length === 0 ? (
+          <p className="text-center text-gray-400 py-16 text-sm">
+            {filtroAlumno ? 'Este alumno no tiene pagos registrados.' : 'No hay pagos registrados aún.'}
+          </p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -217,67 +276,120 @@ export default function Pagos() {
                   <th className="px-6 py-3 font-medium text-right">Acciones</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
-                {pagos.map(p => {
-                  const esPrueba = p.tipo === 'prueba'
+              <tbody className="divide-y divide-gray-100">
+                {grupos.map(grupo => {
+                  const { key, alumnos: alumnoInfo, mes, año, items } = grupo
+                  const prueba  = items.find(p => p.tipo === 'prueba')
+                  const normal  = items.find(p => (p.tipo ?? 'normal') === 'normal')
+                  const esCompletado = prueba && normal
+                  const soloSinCompletar = prueba && !normal
+                  const totalGrupo = items.reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const expandido = expandidos[key]
+                  const ultimaFecha = items.reduce((latest, p) => {
+                    const d = new Date(p.fecha_pago)
+                    return d > latest ? d : latest
+                  }, new Date(0))
+
                   return (
-                  <tr key={p.id} className={`hover:bg-gray-50 transition-colors ${esPrueba ? 'bg-amber-50/40' : ''}`}>
-                    <td className="px-6 py-4 font-medium text-gray-800">
-                      {p.alumnos?.nombre_completo ?? '—'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`font-semibold ${esPrueba ? 'text-amber-700' : 'text-green-700'}`}>
-                          Gs. {parseFloat(p.monto).toLocaleString('es-PY')}
-                        </span>
-                        {esPrueba && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
-                            Prueba
+                    <tr key={key} className={`transition-colors ${esCompletado ? 'hover:bg-green-50/30' : soloSinCompletar ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-gray-50'}`}>
+                      <td className="px-6 py-4 font-medium text-gray-800">
+                        {alumnoInfo?.nombre_completo ?? '—'}
+                      </td>
+                      <td className="px-6 py-4">
+                        {esCompletado ? (
+                          // Prueba completada: mostrar total + desglose expandible
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-green-700">
+                                Gs. {totalGrupo.toLocaleString('es-PY')}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+                                Completado
+                              </span>
+                              <button
+                                onClick={() => toggleExpandido(key)}
+                                className="text-gray-400 hover:text-gray-600 transition"
+                                title="Ver detalle"
+                              >
+                                {expandido ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
+                              </button>
+                            </div>
+                            {expandido && (
+                              <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
+                                <div>· Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')} — clase de prueba ({new Date(prueba.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>
+                                <div>· Gs. {parseFloat(normal.monto).toLocaleString('es-PY')} — complemento ({new Date(normal.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>
+                              </div>
+                            )}
+                          </div>
+                        ) : soloSinCompletar ? (
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-amber-700">
+                              Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 border border-amber-200">
+                              Prueba
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="font-semibold text-green-700">
+                            Gs. {parseFloat(normal.monto).toLocaleString('es-PY')}
                           </span>
                         )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {new Date(p.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}
-                    </td>
-                    <td className="px-6 py-4 text-gray-600">
-                      {MESES[(p.mes_correspondiente ?? 1) - 1]} {p.año_correspondiente}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex justify-end gap-1">
-                        {esPrueba && (
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {ultimaFecha.toLocaleDateString('es-PY')}
+                      </td>
+                      <td className="px-6 py-4 text-gray-600">
+                        {MESES[(mes ?? 1) - 1]} {año}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <div className="flex justify-end gap-1">
+                          {soloSinCompletar && (
+                            <button
+                              onClick={() => openCompletar(prueba)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition"
+                              title="Registrar pago restante"
+                            >
+                              <CircleCheckBig size={13} />
+                              Completar
+                            </button>
+                          )}
+                          {/* Descargar recibo del pago normal (o prueba si no hay normal) */}
                           <button
-                            onClick={() => openCompletar(p)}
-                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition"
-                            title="Registrar pago restante"
+                            onClick={() => downloadReceipt(normal ?? prueba)}
+                            disabled={downloading === (normal ?? prueba)?.id}
+                            className="p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 disabled:opacity-40 transition"
+                            title="Descargar recibo"
                           >
-                            <CircleCheckBig size={13} />
-                            Completar
+                            {downloading === (normal ?? prueba)?.id
+                              ? <Loader2 size={15} className="animate-spin" />
+                              : <Download size={15} />
+                            }
                           </button>
-                        )}
-                        <button
-                          onClick={() => downloadReceipt(p)}
-                          disabled={downloading === p.id}
-                          className="p-1.5 rounded-lg text-primary-600 hover:bg-primary-50 disabled:opacity-40 transition"
-                          title="Descargar recibo"
-                        >
-                          {downloading === p.id
-                            ? <Loader2 size={15} className="animate-spin" />
-                            : <Download size={15} />
-                          }
-                        </button>
-                        <button
-                          onClick={() => handleDelete(p.id)}
-                          className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition"
-                          title="Eliminar pago"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                )})}
-
+                          {/* Eliminar: borra todos los pagos del grupo */}
+                          <button
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: 'Eliminar pago',
+                                message: esCompletado
+                                  ? '¿Eliminar los 2 pagos de este período (prueba + complemento)? Esta acción no se puede deshacer.'
+                                  : '¿Eliminar este pago? Esta acción no se puede deshacer.',
+                                variant: 'danger',
+                              })
+                              if (!ok) return
+                              await Promise.all(items.map(p => supabase.from('pagos').delete().eq('id', p.id)))
+                              fetchAll()
+                            }}
+                            className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition"
+                            title="Eliminar pago"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
