@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, Search, Pencil, Trash2, X, Loader2, ExternalLink, Download } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, Loader2, ExternalLink, Download, Banknote, ArrowLeftRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { generateReceipt, calcularProximoVenc } from '../lib/generateReceipt'
@@ -98,6 +98,7 @@ export default function Alumnos() {
   const [pagarAhora, setPagarAhora] = useState(false)
   const [tipoPago, setTipoPago]     = useState('normal') // 'normal' | 'prueba'
   const [montoPago, setMontoPago]   = useState('')
+  const [metodoPago, setMetodoPago] = useState('efectivo')
 
   useEffect(() => { fetchAll() }, [])
 
@@ -169,6 +170,7 @@ export default function Alumnos() {
     setPagarAhora(false)
     setTipoPago('normal')
     setMontoPago(String(precios[2]))
+    setMetodoPago('efectivo')
     setModalOpen(true)
   }
 
@@ -229,6 +231,7 @@ export default function Alumnos() {
           mes_correspondiente: hoy.getMonth() + 1,
           año_correspondiente: hoy.getFullYear(),
           tipo:                tipoPago,
+          metodo_pago:         metodoPago,
         }
         const { data: nuevoPago } = await supabase.from('pagos').insert(pagoPayload).select().single()
         if (nuevoPago) {
@@ -577,6 +580,34 @@ export default function Alumnos() {
                           <div className="font-semibold">Clase de prueba</div>
                           <div className="opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} parcial</div>
                         </button>
+                      </div>
+                      {/* Método de pago */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Método de pago</label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setMetodoPago('efectivo')}
+                            className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition flex items-center gap-1.5 ${
+                              metodoPago === 'efectivo'
+                                ? 'border-green-600 bg-green-50 text-green-800'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            }`}
+                          >
+                            <Banknote size={13} /> Efectivo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMetodoPago('transferencia')}
+                            className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition flex items-center gap-1.5 ${
+                              metodoPago === 'transferencia'
+                                ? 'border-blue-600 bg-blue-50 text-blue-800'
+                                : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                            }`}
+                          >
+                            <ArrowLeftRight size={13} /> Transferencia
+                          </button>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Monto (Gs.)</label>
