@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, Search, Pencil, Trash2, X, Loader2, ExternalLink } from 'lucide-react'
+import { Plus, Search, Pencil, Trash2, X, Loader2, ExternalLink, Download } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { generateReceipt, calcularProximoVenc } from '../lib/generateReceipt'
+import logoUrl from '../IMG_6191-removebg-preview.png'
+
+const PRECIO_PRUEBA = 25000
 
 const NIVELES = ['principiante', 'intermedio', 'avanzado']
 
@@ -81,7 +85,9 @@ export default function Alumnos() {
   const [alumnos, setAlumnos]       = useState([])
   const [horarios, setHorarios]     = useState([])
   const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
+  const [diaVenc, setDiaVenc]       = useState(5)
   const [search, setSearch]         = useState('')
+  const [filtroHorario, setFiltroHorario] = useState('')
   const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [modalOpen, setModalOpen]   = useState(false)
@@ -90,6 +96,7 @@ export default function Alumnos() {
   const [error, setError]           = useState('')
   // Pago inmediato al crear
   const [pagarAhora, setPagarAhora] = useState(false)
+  const [tipoPago, setTipoPago]     = useState('normal') // 'normal' | 'prueba'
   const [montoPago, setMontoPago]   = useState('')
 
   useEffect(() => { fetchAll() }, [])
@@ -103,18 +110,19 @@ export default function Alumnos() {
       supabase.from('horarios').select('*').order('hora_inicio'),
     ])
     
-    let diaVenc = 5;
+    let dv = 5
     if (configData) {
       const p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       const p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
-      diaVenc = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      dv = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
       setPrecios({ 1: p1, 2: p2 })
+      setDiaVenc(dv)
     }
 
     const hoy = new Date();
     const finalAlumnos = (alumnosData ?? []).map(a => ({
       ...a,
-      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, diaVenc)
+      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, dv)
     }))
 
     setAlumnos(finalAlumnos)
@@ -122,11 +130,44 @@ export default function Alumnos() {
     setLoading(false)
   }
 
+  const exportarCSV = () => {
+    const encabezado = ['Nombre', 'Edad', 'Fecha nacimiento', 'Teléfono', 'Fecha inscripción', 'Estado', 'Nivel', 'Frecuencia', 'Grupo/Horario']
+    const filas = filtered.map(a => {
+      const edad = calcularEdad(a.fecha_nacimiento)
+      const h    = horarios.find(h => h.id === a.horario_id)
+      return [
+        a.nombre_completo,
+        edad !== null ? edad : '',
+        a.fecha_nacimiento ?? '',
+        a.telefono ?? '',
+        a.fecha_inscripcion,
+        a.estado,
+        NIVEL_LABEL[a.nivel] ?? a.nivel,
+        a.frecuencia === 1 ? '1 vez/semana' : '2 veces/semana',
+        h ? `${h.nombre} ${h.dia_semana} ${h.hora_inicio.slice(0,5)}` : '',
+      ]
+    })
+    const csv = [encabezado, ...filas]
+      .map(row => row.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href = url
+    const sufijo = filtroHorario && filtroHorario !== '__sin__'
+      ? `_${horarios.find(h => h.id === filtroHorario)?.nombre?.replace(/\s+/g, '_') ?? 'grupo'}`
+      : ''
+    a.download = `alumnos${sufijo}_${new Date().toISOString().split('T')[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   const openCreate = () => {
     setForm(EMPTY_FORM)
     setEditingId(null)
     setError('')
     setPagarAhora(false)
+    setTipoPago('normal')
     setMontoPago(String(precios[2]))
     setModalOpen(true)
   }
@@ -151,7 +192,16 @@ export default function Alumnos() {
   const handleFrecuenciaChange = (val) => {
     const freq = parseInt(val)
     setForm(f => ({ ...f, frecuencia: freq }))
-    setMontoPago(String(precios[freq]))
+    if (tipoPago === 'normal') setMontoPago(String(precios[freq]))
+  }
+
+  const handleTipoPagoChange = (tipo) => {
+    setTipoPago(tipo)
+    if (tipo === 'prueba') {
+      setMontoPago(String(PRECIO_PRUEBA))
+    } else {
+      setMontoPago(String(precios[form.frecuencia] ?? precios[2]))
+    }
   }
 
   const handleSave = async (e) => {
@@ -169,16 +219,34 @@ export default function Alumnos() {
         .from('alumnos').insert(payload).select().single()
       if (err) { setError(err.message); setSaving(false); return }
 
-      // Registrar pago inmediato si está marcado
+      // Registrar pago inmediato y descargar recibo
       if (pagarAhora && montoPago && nuevo) {
         const hoy = new Date()
-        await supabase.from('pagos').insert({
+        const pagoPayload = {
           alumno_id:           nuevo.id,
           monto:               parseFloat(montoPago),
           fecha_pago:          form.fecha_inscripcion,
           mes_correspondiente: hoy.getMonth() + 1,
           año_correspondiente: hoy.getFullYear(),
-        })
+          tipo:                tipoPago,
+        }
+        const { data: nuevoPago } = await supabase.from('pagos').insert(pagoPayload).select().single()
+        if (nuevoPago) {
+          await generateReceipt({
+            pagoId:           nuevoPago.id,
+            alumnoNombre:     nuevo.nombre_completo,
+            alumnoNivel:      nuevo.nivel,
+            alumnoFrecuencia: nuevo.frecuencia,
+            monto:            parseFloat(montoPago),
+            fechaPago:        form.fecha_inscripcion,
+            mes:              hoy.getMonth() + 1,
+            anio:             hoy.getFullYear(),
+            logoUrl,
+            mesesPendientes:  [],
+            tipo:             tipoPago,
+            proximoVencTexto: calcularProximoVenc(form.fecha_inscripcion, hoy.getMonth() + 1, hoy.getFullYear()),
+          })
+        }
       }
     }
 
@@ -198,37 +266,76 @@ export default function Alumnos() {
     fetchAll()
   }
 
-  const filtered = alumnos.filter(a =>
-    a.nombre_completo.toLowerCase().includes(search.toLowerCase())
-  )
+  const filtered = alumnos.filter(a => {
+    if (!a.nombre_completo.toLowerCase().includes(search.toLowerCase())) return false
+    if (filtroHorario === '__sin__') return !a.horario_id
+    if (filtroHorario && a.horario_id !== filtroHorario) return false
+    return true
+  })
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Alumnos</h2>
           <p className="text-gray-500 text-sm mt-1">{alumnos.length} alumnos registrados</p>
         </div>
-        <button
-          onClick={openCreate}
-          className="flex items-center gap-2 bg-primary-800 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium shadow transition"
-        >
-          <Plus size={16} />
-          Nuevo alumno
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportarCSV}
+            disabled={alumnos.length === 0}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition"
+          >
+            <Download size={15} />
+            Exportar CSV
+          </button>
+          <button
+            onClick={openCreate}
+            className="flex items-center gap-2 bg-primary-800 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium shadow transition"
+          >
+            <Plus size={16} />
+            Nuevo alumno
+          </button>
+        </div>
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-sm">
-        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input
-          type="text"
-          placeholder="Buscar por nombre..."
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          className="pl-9 pr-4 py-2.5 w-full border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-        />
+      {/* Search + filtro grupo */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 w-56"
+          />
+        </div>
+        <select
+          value={filtroHorario}
+          onChange={e => setFiltroHorario(e.target.value)}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+        >
+          <option value="">Todos los grupos</option>
+          {horarios.map(h => (
+            <option key={h.id} value={h.id}>
+              {h.nombre} · {h.dia_semana} {h.hora_inicio.slice(0,5)}
+            </option>
+          ))}
+          <option value="__sin__">Sin grupo asignado</option>
+        </select>
+        {(search || filtroHorario) && (
+          <button
+            onClick={() => { setSearch(''); setFiltroHorario('') }}
+            className="text-xs text-gray-400 hover:text-red-500 transition"
+          >
+            Limpiar filtros
+          </button>
+        )}
+        {(search || filtroHorario) && (
+          <span className="text-xs text-gray-500">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}</span>
+        )}
       </div>
 
       {/* Table */}
@@ -443,13 +550,46 @@ export default function Alumnos() {
                     <span className="text-sm font-medium text-gray-800">Registrar pago del mes actual</span>
                   </label>
                   {pagarAhora && (
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Monto (Gs.)</label>
-                      <input
-                        type="number" min="0" value={montoPago}
-                        onChange={e => setMontoPago(e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-                      />
+                    <div className="space-y-3">
+                      {/* Tipo de pago */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleTipoPagoChange('normal')}
+                          className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition text-left ${
+                            tipoPago === 'normal'
+                              ? 'border-primary-600 bg-primary-50 text-primary-800'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-semibold">Cuota normal</div>
+                          <div className="opacity-70">Gs. {(precios[form.frecuencia] ?? precios[2]).toLocaleString('es-PY')}</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleTipoPagoChange('prueba')}
+                          className={`py-2 px-3 rounded-lg text-xs font-medium border-2 transition text-left ${
+                            tipoPago === 'prueba'
+                              ? 'border-amber-500 bg-amber-50 text-amber-800'
+                              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                          }`}
+                        >
+                          <div className="font-semibold">Clase de prueba</div>
+                          <div className="opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} parcial</div>
+                        </button>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Monto (Gs.)</label>
+                        <input
+                          type="number" min="0" value={montoPago}
+                          onChange={e => setMontoPago(e.target.value)}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                        />
+                      </div>
+                      <p className="text-xs text-gray-400 flex items-center gap-1">
+                        <Download size={11} />
+                        El recibo se descargará automáticamente al crear el alumno.
+                      </p>
                     </div>
                   )}
                 </div>

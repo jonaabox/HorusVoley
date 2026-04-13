@@ -1,5 +1,16 @@
 import { jsPDF } from 'jspdf'
 
+// Calcula el próximo vencimiento basado en la fecha de inscripción del alumno.
+// El día de vencimiento es siempre el mismo día del mes que la inscripción.
+// Ej: inscripto el 9/04 pagó en abril → vence el 9/05
+export function calcularProximoVenc(fechaInscripcion, mesCorrespondiente, anioCorrespondiente) {
+  if (!fechaInscripcion) return null
+  const diaInscripcion = new Date(fechaInscripcion + 'T00:00:00').getDate()
+  const sigMes  = mesCorrespondiente === 12 ? 1  : mesCorrespondiente + 1
+  const sigAnio = mesCorrespondiente === 12 ? anioCorrespondiente + 1 : anioCorrespondiente
+  return `${diaInscripcion}/${String(sigMes).padStart(2, '0')}/${sigAnio}`
+}
+
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
@@ -27,6 +38,7 @@ export async function generateReceipt(params) {
     monto, fechaPago, mes, anio, logoUrl,
     mesesPendientes = [],
     tipo = 'normal',
+    proximoVencTexto = null,   // ya calculado por el llamador: "13/05/2026"
   } = params
 
   const doc = new jsPDF({ unit: 'mm', format: 'a5', orientation: 'portrait' })
@@ -215,6 +227,27 @@ export async function generateReceipt(params) {
       doc.text(`... y ${mesesPendientes.length - 5} mes(es) mas`, 14, cy + 4)
       cy += 7
     }
+  }
+
+  // ── Próximo vencimiento ──────────────────────────────────────────────────
+  if (proximoVencTexto) {
+    cy += 4
+    doc.setFillColor(239, 246, 255)
+    doc.roundedRect(10, cy, W - 20, 12, 2, 2, 'F')
+    doc.setDrawColor(147, 197, 253)
+    doc.roundedRect(10, cy, W - 20, 12, 2, 2, 'S')
+    doc.setTextColor(29, 78, 216)
+    doc.setFontSize(7.5)
+    doc.setFont('helvetica', 'normal')
+    doc.text('Próximo vencimiento:', 15, cy + 5)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(9)
+    doc.text(proximoVencTexto, 15, cy + 10.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.setTextColor(71, 85, 105)
+    doc.text('Abonar antes de esta fecha para evitar mora.', W - 15, cy + 7.5, { align: 'right' })
+    cy += 16
   }
 
   // ── Pie de página ────────────────────────────────────────────────────────

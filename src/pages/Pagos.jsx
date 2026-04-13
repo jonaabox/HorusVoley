@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
-import { Plus, X, Loader2, Trash2, Download, CircleCheckBig, ChevronDown, ChevronRight, User } from 'lucide-react'
+import { Plus, X, Loader2, Trash2, Download, CircleCheckBig, ChevronDown, ChevronRight, User, Search, Banknote, ArrowLeftRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { generateReceipt } from '../lib/generateReceipt'
+import { generateReceipt, calcularProximoVenc } from '../lib/generateReceipt'
 import logoUrl from '../IMG_6191-removebg-preview.png'
 
 const PRECIO_PRUEBA = 25000
@@ -40,6 +40,7 @@ const EMPTY_FORM = {
   mes_correspondiente: new Date().getMonth() + 1,
   año_correspondiente: new Date().getFullYear(),
   tipo:                'normal',
+  metodo_pago:         'efectivo',
 }
 
 export default function Pagos() {
@@ -54,6 +55,7 @@ export default function Pagos() {
   const [form, setForm]             = useState(EMPTY_FORM)
   const [error, setError]           = useState('')
   const [filtroAlumno, setFiltroAlumno] = useState('')
+  const [busqueda, setBusqueda]         = useState('')
   const [expandidos, setExpandidos]     = useState({}) // grupoKey → bool
 
   useEffect(() => { fetchAll() }, [])
@@ -78,9 +80,12 @@ export default function Pagos() {
   // Agrupa pagos por (alumno_id, mes, año). Si hay prueba+normal para el mismo período,
   // se muestran como una sola entrada "completada".
   const grupos = useMemo(() => {
-    const filtrados = filtroAlumno
-      ? pagos.filter(p => p.alumno_id === filtroAlumno)
-      : pagos
+    const q = busqueda.toLowerCase().trim()
+    const filtrados = pagos.filter(p => {
+      if (filtroAlumno && p.alumno_id !== filtroAlumno) return false
+      if (q && !p.alumnos?.nombre_completo?.toLowerCase().includes(q)) return false
+      return true
+    })
 
     const mapa = {}
     filtrados.forEach(p => {
@@ -143,6 +148,7 @@ export default function Pagos() {
       mes_correspondiente: parseInt(form.mes_correspondiente),
       año_correspondiente: parseInt(form.año_correspondiente),
       tipo:                form.tipo,
+      metodo_pago:         form.metodo_pago ?? 'efectivo',
     }
 
     const { data: nuevoPago, error: err } = await supabase
@@ -188,6 +194,7 @@ export default function Pagos() {
         logoUrl,
         mesesPendientes,
         tipo:             pago.tipo ?? 'normal',
+        proximoVencTexto: calcularProximoVenc(alumnoData?.fecha_inscripcion, pago.mes_correspondiente, pago.año_correspondiente),
       })
     } catch (e) {
       console.error('Error generando recibo:', e)
@@ -223,14 +230,24 @@ export default function Pagos() {
         </button>
       </div>
 
-      {/* Filtro por alumno */}
-      <div className="flex items-center gap-3">
+      {/* Búsqueda + filtro por alumno */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre..."
+            value={busqueda}
+            onChange={e => setBusqueda(e.target.value)}
+            className="pl-9 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 w-52"
+          />
+        </div>
         <div className="relative">
           <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <select
             value={filtroAlumno}
             onChange={e => setFiltroAlumno(e.target.value)}
-            className="pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white min-w-[220px]"
+            className="pl-8 pr-4 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white min-w-[200px]"
           >
             <option value="">Todos los alumnos</option>
             {alumnos.map(a => (
@@ -238,12 +255,12 @@ export default function Pagos() {
             ))}
           </select>
         </div>
-        {filtroAlumno && (
+        {(busqueda || filtroAlumno) && (
           <button
-            onClick={() => setFiltroAlumno('')}
+            onClick={() => { setBusqueda(''); setFiltroAlumno('') }}
             className="text-xs text-gray-400 hover:text-red-500 transition"
           >
-            Limpiar filtro
+            Limpiar filtros
           </button>
         )}
         {filtroAlumno && (
@@ -433,6 +450,34 @@ export default function Pagos() {
                 >
                   <div className="font-semibold">Clase de prueba</div>
                   <div className="text-xs opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} parcial</div>
+                </button>
+              </div>
+
+              {/* Método de pago */}
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, metodo_pago: 'efectivo' }))}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition flex items-center gap-2 ${
+                    form.metodo_pago === 'efectivo'
+                      ? 'border-green-600 bg-green-50 text-green-800'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <Banknote size={15} />
+                  Efectivo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, metodo_pago: 'transferencia' }))}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition flex items-center gap-2 ${
+                    form.metodo_pago === 'transferencia'
+                      ? 'border-blue-600 bg-blue-50 text-blue-800'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <ArrowLeftRight size={15} />
+                  Transferencia
                 </button>
               </div>
 
