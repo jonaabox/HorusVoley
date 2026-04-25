@@ -162,6 +162,8 @@ export async function generateReceipt(params) {
   doc.setTextColor(...DARK)
   const concepto = tipo === 'prueba'
     ? `Clase de prueba (pago parcial) · ${MESES[mes - 1]} ${anio}`
+    : tipo === 'proporcional'
+    ? `Upgrade proporcional 2x/sem · ${MESES[mes - 1]} ${anio}`
     : `Cuota mensual · ${MESES[mes - 1]} ${anio}`
   doc.text(concepto, 60, cy + 4)
   cy += 9
