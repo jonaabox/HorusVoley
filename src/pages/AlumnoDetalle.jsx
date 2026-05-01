@@ -38,8 +38,9 @@ function calcularEdad(fechaNacimiento) {
   return edad
 }
 
-function calcularMesesDeuda(alumno, pagos, hoy, diaVenc) {
+function calcularMesesDeuda(alumno, pagos, hoy, diaVenc, precios) {
   if (!alumno.fecha_inscripcion) return []
+  const precioMensual = precios ? (alumno.frecuencia === 1 ? precios[1] : precios[2]) : 0
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -50,10 +51,16 @@ function calcularMesesDeuda(alumno, pagos, hoy, diaVenc) {
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
     if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
-    const tieneNormal = pagos.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo == null || p.tipo === 'normal'))
-    if (!tieneNormal) {
+    const totalNormal = pagos
+      .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo == null || p.tipo === 'normal'))
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    if (precioMensual > 0 && totalNormal >= precioMensual) {
+      // pagado completo
+    } else if (totalNormal > 0) {
+      deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
+    } else {
       const tienePrueba = pagos.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && p.tipo === 'prueba')
-      deuda.push({ mes, anio, parcial: tienePrueba })
+      deuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false, saldo: precioMensual })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -181,8 +188,8 @@ export default function AlumnoDetalle() {
 
   const mesesDeuda = useMemo(() => {
     if (!alumno) return []
-    return calcularMesesDeuda(alumno, pagos, new Date(), config.diaVenc)
-  }, [alumno, pagos, config.diaVenc])
+    return calcularMesesDeuda(alumno, pagos, new Date(), config.diaVenc, { 1: config.precio1, 2: config.precio2 })
+  }, [alumno, pagos, config.diaVenc, config.precio1, config.precio2])
 
   // Abre el modal pre-rellenado con el mes más antiguo adeudado
   const openPagoModal = () => {
@@ -196,11 +203,13 @@ export default function AlumnoDetalle() {
       parcial: false,
     }
 
-    // Si ya tiene prueba parcial, solo falta el complemento
-    const esParcial = mesPendiente.parcial
-    const montoDefault = esParcial
+    // Si ya tiene pago parcial, solo falta el complemento
+    const esParcial = mesPendiente.parcial  // false | 'prueba' | 'incompleto'
+    const montoDefault = esParcial === 'prueba'
       ? Math.max(0, precioNormal - PRECIO_PRUEBA)
-      : precioNormal
+      : esParcial === 'incompleto'
+        ? (mesPendiente.saldo ?? precioNormal)
+        : precioNormal
 
     setPagoForm({
       mes:      mesPendiente.mes,
@@ -241,7 +250,8 @@ export default function AlumnoDetalle() {
         alumno,
         [...pagos, nuevoPago],
         new Date(),
-        config.diaVenc
+        config.diaVenc,
+        { 1: config.precio1, 2: config.precio2 }
       )
       await generateReceipt({
         pagoId:           nuevoPago.id,
@@ -304,11 +314,13 @@ export default function AlumnoDetalle() {
     setDownloading(pago.id)
     try {
       const [{ data: pagosList }, { data: configData }] = await Promise.all([
-        supabase.from('pagos').select('mes_correspondiente, año_correspondiente').eq('alumno_id', id),
+        supabase.from('pagos').select('mes_correspondiente, año_correspondiente, monto, tipo').eq('alumno_id', id),
         supabase.from('configuracion').select('clave, valor'),
       ])
-      const diaVenc = parseInt(configData?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
-      const mesesPendientes = alumno ? calcularMesesDeuda(alumno, pagosList ?? [], new Date(), diaVenc) : []
+      const diaVenc  = parseInt(configData?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const precio1  = parseInt(configData?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+      const precio2  = parseInt(configData?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const mesesPendientes = alumno ? calcularMesesDeuda(alumno, pagosList ?? [], new Date(), diaVenc, { 1: precio1, 2: precio2 }) : []
       await generateReceipt({
         pagoId: pago.id, alumnoNombre: alumno?.nombre_completo ?? '—',
         alumnoNivel: alumno?.nivel ?? 'principiante', alumnoFrecuencia: alumno?.frecuencia ?? 1,
@@ -340,8 +352,9 @@ export default function AlumnoDetalle() {
     )
   }
 
-  const sinPago    = mesesDeuda.some(m => !m.parcial)
-  const soloPrueba = mesesDeuda.length > 0 && !sinPago
+  const sinPago        = mesesDeuda.some(m => m.parcial === false)
+  const soloIncompleto = mesesDeuda.length > 0 && !sinPago && mesesDeuda.some(m => m.parcial === 'incompleto')
+  const soloPrueba     = mesesDeuda.length > 0 && !sinPago && !soloIncompleto
   const iniciales  = alumno.nombre_completo.split(' ').slice(0, 2).map(w => w[0]).join('').toUpperCase()
 
   return (
@@ -363,7 +376,11 @@ export default function AlumnoDetalle() {
               <h2 className="text-2xl font-bold text-gray-800">{alumno.nombre_completo}</h2>
               {sinPago ? (
                 <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                  <AlertCircle size={12} /> Debe {mesesDeuda.filter(m => !m.parcial).length} mes{mesesDeuda.filter(m => !m.parcial).length !== 1 ? 'es' : ''}
+                  <AlertCircle size={12} /> Debe {mesesDeuda.filter(m => m.parcial === false).length} mes{mesesDeuda.filter(m => m.parcial === false).length !== 1 ? 'es' : ''}
+                </span>
+              ) : soloIncompleto ? (
+                <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
+                  <AlertTriangle size={12} /> Pago incompleto
                 </span>
               ) : soloPrueba ? (
                 <span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">
@@ -616,9 +633,11 @@ export default function AlumnoDetalle() {
                   <p className="text-xs text-red-600 font-semibold mb-1">Meses adeudados:</p>
                   {mesesDeuda.map((m, i) => (
                     <div key={i} className="text-xs">
-                      {m.parcial
-                        ? <span className="text-amber-600">· {MESES[m.mes - 1]} {m.anio} (prueba parcial)</span>
-                        : <span className="text-red-500">· {MESES[m.mes - 1]} {m.anio}</span>
+                      {m.parcial === 'incompleto'
+                        ? <span className="text-orange-600">· {MESES[m.mes - 1]} {m.anio} (incompleto — debe Gs. {m.saldo?.toLocaleString('es-PY')})</span>
+                        : m.parcial === 'prueba'
+                          ? <span className="text-amber-600">· {MESES[m.mes - 1]} {m.anio} (prueba parcial)</span>
+                          : <span className="text-red-500">· {MESES[m.mes - 1]} {m.anio}</span>
                       }
                     </div>
                   ))}
@@ -681,14 +700,18 @@ export default function AlumnoDetalle() {
                 {gruposPago.map(grupo => {
                   const { key, mes, año, items } = grupo
                   const prueba  = items.find(p => p.tipo === 'prueba')
-                  const normal  = items.find(p => (p.tipo ?? 'normal') === 'normal')
-                  const esCompletado     = prueba && normal
-                  const soloSinCompletar = prueba && !normal
+                  const normales = items.filter(p => (p.tipo ?? 'normal') === 'normal')
+                  const normal  = normales[normales.length - 1]  // último pago normal
+                  const esCompletado     = prueba && normales.length > 0
+                  const soloSinCompletar = prueba && normales.length === 0
+                  const totalNormales    = normales.reduce((s, p) => s + parseFloat(p.monto || 0), 0)
                   const totalGrupo = items.reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const esIncompleto     = !prueba && totalNormales > 0 && totalNormales < precioMensual
+                  const tieneMultiplesNormales = normales.length > 1
                   const expandido  = expandidos[key]
 
                   return (
-                    <div key={key} className={`px-5 py-4 transition-colors ${soloSinCompletar ? 'bg-amber-50/30' : ''}`}>
+                    <div key={key} className={`px-5 py-4 transition-colors ${soloSinCompletar ? 'bg-amber-50/30' : esIncompleto ? 'bg-orange-50/30' : ''}`}>
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-3">
                           <div className="w-12 text-center shrink-0">
@@ -697,13 +720,17 @@ export default function AlumnoDetalle() {
                           </div>
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-sm font-semibold ${soloSinCompletar ? 'text-amber-700' : 'text-green-700'}`}>
-                                Gs. {totalGrupo.toLocaleString('es-PY')}
+                              <span className={`text-sm font-semibold ${soloSinCompletar ? 'text-amber-700' : esIncompleto ? 'text-orange-700' : 'text-green-700'}`}>
+                                Gs. {(esIncompleto ? totalNormales : totalGrupo).toLocaleString('es-PY')}
                               </span>
                               {esCompletado && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Completado</span>}
                               {soloSinCompletar && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba</span>}
+                              {esIncompleto && <span className="px-1.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">Incompleto</span>}
                             </div>
-                            {esCompletado && (
+                            {esIncompleto && (
+                              <p className="text-xs text-orange-500 mt-0.5">Falta Gs. {(precioMensual - totalNormales).toLocaleString('es-PY')}</p>
+                            )}
+                            {(esCompletado || tieneMultiplesNormales) && (
                               <button
                                 onClick={() => setExpandidos(prev => ({ ...prev, [key]: !prev[key] }))}
                                 className="flex items-center gap-1 text-xs text-gray-400 hover:text-gray-600 mt-0.5 transition"
@@ -712,13 +739,15 @@ export default function AlumnoDetalle() {
                                 Ver detalle
                               </button>
                             )}
-                            {esCompletado && expandido && (
+                            {(esCompletado || tieneMultiplesNormales) && expandido && (
                               <div className="mt-2 space-y-0.5 text-xs text-gray-500">
-                                <div>· Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')} — clase de prueba · {new Date(prueba.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}</div>
-                                <div>· Gs. {parseFloat(normal.monto).toLocaleString('es-PY')} — complemento · {new Date(normal.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}</div>
+                                {prueba && <div>· Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')} — clase de prueba · {new Date(prueba.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}</div>}
+                                {normales.map((n, i) => (
+                                  <div key={i}>· Gs. {parseFloat(n.monto).toLocaleString('es-PY')} — {prueba ? 'complemento' : 'cuota'}{normales.length > 1 ? ` (${i + 1}/${normales.length})` : ''} · {new Date(n.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}</div>
+                                ))}
                               </div>
                             )}
-                            {!esCompletado && (
+                            {!esCompletado && !tieneMultiplesNormales && (
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {new Date((normal ?? prueba).fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')}
                               </p>
@@ -822,11 +851,16 @@ export default function AlumnoDetalle() {
             <form onSubmit={handlePagoSave} className="px-6 py-5 space-y-4">
               {/* Aviso sobre qué mes se está pagando */}
               {mesesDeuda.length > 0 ? (
-                <div className={`rounded-lg px-3 py-2.5 text-xs ${pagoForm.esParcial ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
-                  {pagoForm.esParcial ? (
+                <div className={`rounded-lg px-3 py-2.5 text-xs ${pagoForm.esParcial === 'prueba' ? 'bg-amber-50 border border-amber-200 text-amber-800' : pagoForm.esParcial === 'incompleto' ? 'bg-orange-50 border border-orange-200 text-orange-800' : 'bg-blue-50 border border-blue-200 text-blue-800'}`}>
+                  {pagoForm.esParcial === 'prueba' ? (
                     <>
                       <p className="font-semibold">Complemento de clase de prueba</p>
                       <p className="mt-0.5 opacity-80">Ya existe un pago parcial de Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} para <strong>{MESES[pagoForm.mes - 1]} {pagoForm.anio}</strong>. Este pago completa la cuota.</p>
+                    </>
+                  ) : pagoForm.esParcial === 'incompleto' ? (
+                    <>
+                      <p className="font-semibold">Completar cuota de {MESES[pagoForm.mes - 1]} {pagoForm.anio}</p>
+                      <p className="mt-0.5 opacity-80">Ya se abonó una parte de esta cuota. Falta <strong>Gs. {Number(pagoForm.monto).toLocaleString('es-PY')}</strong> para completar los <strong>Gs. {(alumno.frecuencia === 1 ? config.precio1 : config.precio2).toLocaleString('es-PY')}</strong> del mes.</p>
                     </>
                   ) : (
                     <>
