@@ -53,14 +53,17 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
     const esActual    = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy   = hoy.getDate() > diaVenc
 
-    if (esActual && !vencioHoy) {
-      cursor.setMonth(cursor.getMonth() + 1)
-      continue
-    }
-
     const totalNormal = todosPagos
       .filter(p => p.alumno_id === alumno.id && p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
       .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+
+    if (esActual && !vencioHoy) {
+      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
+        mesesDeuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+      continue
+    }
 
     if (precioMensual > 0 && totalNormal >= precioMensual) {
       // pagado completo

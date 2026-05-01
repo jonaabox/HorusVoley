@@ -50,17 +50,26 @@ function calcularMesesDeuda(alumno, pagos, hoy, diaVenc, precios) {
     const anio = cursor.getFullYear()
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
-    if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
     const totalNormal = pagos
       .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo == null || p.tipo === 'normal'))
       .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    if (esActual && !vencioHoy) {
+      // Mes actual antes del vencimiento: solo mostrar si hay pago incompleto
+      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
+        deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal, vencido: false })
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+      continue
+    }
+    const vencimiento = new Date(anio, mes - 1, diaVenc)
+    const vencido     = hoy > vencimiento
     if (precioMensual > 0 && totalNormal >= precioMensual) {
       // pagado completo
     } else if (totalNormal > 0) {
-      deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
+      deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal, vencido })
     } else {
       const tienePrueba = pagos.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && p.tipo === 'prueba')
-      deuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false, saldo: precioMensual })
+      deuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false, saldo: precioMensual, vencido })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -289,11 +298,16 @@ export default function AlumnoDetalle() {
     [pagos]
   )
 
-  const totalPagado = pagos.filter(p => p.tipo !== 'proporcional').reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+  const totalPagado    = pagos.filter(p => p.tipo !== 'proporcional').reduce((s, p) => s + parseFloat(p.monto || 0), 0)
   const presentes      = asistencia.filter(a => a.presente).length
   const ausentes       = asistencia.filter(a => !a.presente).length
   const pctAsistencia  = asistencia.length > 0 ? Math.round((presentes / asistencia.length) * 100) : null
   const precioMensual  = alumno ? (alumno.frecuencia === 1 ? config.precio1 : config.precio2) : 0
+  const totalDeuda     = mesesDeuda.reduce((sum, m) => {
+    if (m.parcial === 'incompleto') return sum + (m.saldo ?? 0)
+    if (m.parcial === 'prueba')    return sum + Math.max(0, precioMensual - PRECIO_PRUEBA)
+    return sum + precioMensual
+  }, 0)
 
   // Próximo vencimiento: día de inscripción del próximo mes sin pagar
   // Ej: inscripto el 9 → vence el 9 de cada mes, sin importar cuándo pague
@@ -628,13 +642,19 @@ export default function AlumnoDetalle() {
                     : '—'}
                 </span>
               </div>
+              {totalDeuda > 0 && (
+                <div className="flex justify-between items-center border-t border-red-100 pt-3">
+                  <span className="text-xs font-semibold text-red-600">Saldo adeudado</span>
+                  <span className="text-sm font-bold text-red-600">Gs. {totalDeuda.toLocaleString('es-PY')}</span>
+                </div>
+              )}
               {mesesDeuda.length > 0 && (
-                <div className="border-t border-gray-100 pt-3">
-                  <p className="text-xs text-red-600 font-semibold mb-1">Meses adeudados:</p>
+                <div className={`${totalDeuda > 0 ? '' : 'border-t border-gray-100 pt-3'}`}>
+                  <p className="text-xs text-red-600 font-semibold mb-1">Detalle:</p>
                   {mesesDeuda.map((m, i) => (
                     <div key={i} className="text-xs">
                       {m.parcial === 'incompleto'
-                        ? <span className="text-orange-600">· {MESES[m.mes - 1]} {m.anio} (incompleto — debe Gs. {m.saldo?.toLocaleString('es-PY')})</span>
+                        ? <span className="text-orange-600">· {MESES[m.mes - 1]} {m.anio} — debe Gs. {m.saldo?.toLocaleString('es-PY')}</span>
                         : m.parcial === 'prueba'
                           ? <span className="text-amber-600">· {MESES[m.mes - 1]} {m.anio} (prueba parcial)</span>
                           : <span className="text-red-500">· {MESES[m.mes - 1]} {m.anio}</span>
