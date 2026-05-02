@@ -38,7 +38,8 @@ function calcularEdad(fechaNacimiento) {
   return edad
 }
 
-function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
+function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
+  const precioMensual = precios ? (alumno.frecuencia === 1 ? precios[1] : precios[2]) : 0
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limiteActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -52,26 +53,30 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
     const esActual    = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy   = hoy.getDate() > diaVenc
 
+    const totalNormal = todosPagos
+      .filter(p => p.alumno_id === alumno.id && p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+
     if (esActual && !vencioHoy) {
+      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
+        mesesDeuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
+      }
       cursor.setMonth(cursor.getMonth() + 1)
       continue
     }
 
-    const tieneNormal = todosPagos.some(
-      p => p.alumno_id === alumno.id &&
-           p.mes_correspondiente === mes &&
-           p.año_correspondiente === anio &&
-           (p.tipo ?? 'normal') !== 'prueba'
-    )
-
-    if (!tieneNormal) {
+    if (precioMensual > 0 && totalNormal >= precioMensual) {
+      // pagado completo
+    } else if (totalNormal > 0) {
+      mesesDeuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
+    } else {
       const tienePrueba = todosPagos.some(
         p => p.alumno_id === alumno.id &&
              p.mes_correspondiente === mes &&
              p.año_correspondiente === anio &&
              p.tipo === 'prueba'
       )
-      mesesDeuda.push({ mes, anio, parcial: tienePrueba })
+      mesesDeuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false })
     }
 
     cursor.setMonth(cursor.getMonth() + 1)
@@ -113,9 +118,11 @@ export default function Alumnos() {
     ])
     
     let dv = 5
+    let p1 = 70000
+    let p2 = 120000
     if (configData) {
-      const p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
-      const p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+      p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
       dv = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
       setPrecios({ 1: p1, 2: p2 })
       setDiaVenc(dv)
@@ -124,7 +131,7 @@ export default function Alumnos() {
     const hoy = new Date();
     const finalAlumnos = (alumnosData ?? []).map(a => ({
       ...a,
-      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, dv)
+      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, dv, { 1: p1, 2: p2 })
     }))
 
     setAlumnos(finalAlumnos)
@@ -418,10 +425,12 @@ export default function Alumnos() {
                     <td className="px-6 py-4">
                       {(() => {
                         const deuda = a.mesesDeuda || []
-                        const sinPago   = deuda.some(m => !m.parcial)
-                        const soloPrueba = deuda.length > 0 && !sinPago
-                        if (sinPago)    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
-                        if (soloPrueba) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba parcial</span>
+                        const sinPago        = deuda.some(m => m.parcial === false)
+                        const soloIncompleto = deuda.length > 0 && !sinPago && deuda.some(m => m.parcial === 'incompleto')
+                        const soloPrueba     = deuda.length > 0 && !sinPago && !soloIncompleto
+                        if (sinPago)         return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
+                        if (soloIncompleto)  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">Incompleto</span>
+                        if (soloPrueba)      return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba parcial</span>
                         return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Al día</span>
                       })()}
                     </td>

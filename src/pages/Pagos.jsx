@@ -24,7 +24,7 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc) {
+function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc, precioMensual) {
   const inscripcion = new Date(fechaInscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -34,11 +34,21 @@ function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc) {
     const anio = cursor.getFullYear()
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
-    if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
-    const pagado = pagosAlumno.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+    const totalNormal = pagosAlumno
+      .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    if (esActual && !vencioHoy) {
+      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
+        deuda.push({ mes, anio, vencido: false, saldo: precioMensual - totalNormal })
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+      continue
+    }
+    const pagado = precioMensual > 0 ? totalNormal >= precioMensual : totalNormal > 0
     if (!pagado) {
       const vencimiento = new Date(anio, mes - 1, diaVenc)
-      deuda.push({ mes, anio, vencido: hoy > vencimiento })
+      const saldo = precioMensual > 0 && totalNormal > 0 ? precioMensual - totalNormal : undefined
+      deuda.push({ mes, anio, vencido: hoy > vencimiento, ...(saldo !== undefined && { saldo }) })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -181,6 +191,27 @@ export default function Pagos() {
       mes_correspondiente: pago.mes_correspondiente,
       año_correspondiente: pago.año_correspondiente,
       tipo:                'normal',
+      metodo_pago:         'efectivo',
+    })
+    setError('')
+    setModalOpen(true)
+  }
+
+  const openCompletarIncompleto = (grupo) => {
+    const alumno = alumnos.find(a => a.id === grupo.alumno_id)
+    const precioMensual = alumno ? precios[alumno.frecuencia] : 0
+    const totalPagado = grupo.items
+      .filter(p => (p.tipo ?? 'normal') === 'normal')
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    const saldo = Math.max(0, precioMensual - totalPagado)
+    setForm({
+      alumno_id:           grupo.alumno_id,
+      monto:               String(saldo),
+      fecha_pago:          new Date().toLocaleDateString('en-CA'),
+      mes_correspondiente: grupo.mes,
+      año_correspondiente: grupo.año,
+      tipo:                'normal',
+      metodo_pago:         'efectivo',
     })
     setError('')
     setModalOpen(true)
@@ -222,13 +253,16 @@ export default function Pagos() {
     try {
       const alumnoId = pago.alumno_id ?? pago.alumnos?.id
       const [{ data: alumnoData }, { data: pagosList }, { data: config }] = await Promise.all([
-        supabase.from('alumnos').select('fecha_inscripcion').eq('id', alumnoId).single(),
-        supabase.from('pagos').select('mes_correspondiente, año_correspondiente').eq('alumno_id', alumnoId),
+        supabase.from('alumnos').select('fecha_inscripcion, frecuencia').eq('id', alumnoId).single(),
+        supabase.from('pagos').select('mes_correspondiente, año_correspondiente, monto, tipo').eq('alumno_id', alumnoId),
         supabase.from('configuracion').select('clave, valor'),
       ])
-      const diaVenc = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const diaVenc      = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const precio1      = parseInt(config?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+      const precio2      = parseInt(config?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const precioMensual = alumnoData ? (alumnoData.frecuencia === 1 ? precio1 : precio2) : 0
       const mesesPendientes = alumnoData
-        ? calcularMesesDeuda(alumnoData.fecha_inscripcion, pagosList ?? [], new Date(), diaVenc)
+        ? calcularMesesDeuda(alumnoData.fecha_inscripcion, pagosList ?? [], new Date(), diaVenc, precioMensual)
         : []
 
       await generateReceipt({
@@ -351,6 +385,9 @@ export default function Pagos() {
                   const esCompletado = prueba && normal
                   const soloSinCompletar = prueba && !normal
                   const totalGrupo = items.reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const precioMensualAlumno = alumnos.find(a => a.id === grupo.alumno_id)?.frecuencia === 1 ? precios[1] : precios[2]
+                  const totalNormales = items.filter(p => (p.tipo ?? 'normal') === 'normal').reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const esIncompleto = !prueba && totalNormales > 0 && totalNormales < precioMensualAlumno
                   const expandido = expandidos[key]
                   const ultimaFecha = items.reduce((latest, p) => {
                     const d = new Date(p.fecha_pago)
@@ -358,7 +395,7 @@ export default function Pagos() {
                   }, new Date(0))
 
                   return (
-                    <tr key={key} className={`transition-colors ${esCompletado ? 'hover:bg-green-50/30' : soloSinCompletar ? 'bg-amber-50/40 hover:bg-amber-50/70' : proporcional && !normal && !prueba ? 'bg-violet-50/40 hover:bg-violet-50/70' : 'hover:bg-gray-50'}`}>
+                    <tr key={key} className={`transition-colors ${esCompletado ? 'hover:bg-green-50/30' : soloSinCompletar ? 'bg-amber-50/40 hover:bg-amber-50/70' : esIncompleto ? 'bg-orange-50/40 hover:bg-orange-50/70' : proporcional && !normal && !prueba ? 'bg-violet-50/40 hover:bg-violet-50/70' : 'hover:bg-gray-50'}`}>
                       <td className="px-6 py-4">
                         <button
                           onClick={() => navigate(`/alumnos/${grupo.alumno_id}`)}
@@ -421,9 +458,21 @@ export default function Pagos() {
                               Prueba
                             </span>
                           </div>
+                        ) : esIncompleto ? (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-orange-700">
+                                Gs. {totalNormales.toLocaleString('es-PY')}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                                Incompleto
+                              </span>
+                            </div>
+                            <p className="text-xs text-orange-500 mt-0.5">Falta Gs. {(precioMensualAlumno - totalNormales).toLocaleString('es-PY')}</p>
+                          </div>
                         ) : (
                           <span className="font-semibold text-green-700">
-                            Gs. {parseFloat(normal?.monto ?? 0).toLocaleString('es-PY')}
+                            Gs. {totalGrupo.toLocaleString('es-PY')}
                           </span>
                         )}
                       </td>
@@ -440,6 +489,16 @@ export default function Pagos() {
                               onClick={() => openCompletar(prueba)}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition"
                               title="Registrar pago restante"
+                            >
+                              <CircleCheckBig size={13} />
+                              Completar
+                            </button>
+                          )}
+                          {esIncompleto && (
+                            <button
+                              onClick={() => openCompletarIncompleto(grupo)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition"
+                              title="Registrar el saldo pendiente"
                             >
                               <CircleCheckBig size={13} />
                               Completar
