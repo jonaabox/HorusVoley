@@ -1,0 +1,6 @@
+Quiero empezar a trabajar sobre los fixes. 
+1. Estoy encontrando un error a la hora de cambiar a un alumno de un tipo de suscripción de una vez por semana a dos veces por semana, figura como que debe.¿Por qué? Porque está tomando los valores previos, entonces saca la conclusión de que está debiendo un restante de 55.000 moranías. Quiero que analices cómo está hecha esa lógica. 
+2. En la sección pagos, el buscador por nombre no está funcionando.
+3. Quiero poder ingresar otro tipo de suscripción que son tres veces por semana, con un pago de 160.000 bolaníes.
+4. Quiero tener un apartado en el cual pueda tener un control de pagos y quienes solicitaron camisetas. Si es un dentro del dashboard, es una sección nueva que sea camisetas o indumentarias, de lo cual podemos seleccionar tanto camiseta, accesorios o indumentaria. Y si hace el encargo, podamos ingresar un importe que haya pagado o el pago total. El tamaño de la prenda. Ese tiene que ser una pic list con los talles P, G y GG.
+5. Quiero también tener la opción de cambiar el estado del alumno, para poder ponerlos en un estado inactivo para aquellos que no están viniendo y no me alteren las métricas de los pagos o impagos.

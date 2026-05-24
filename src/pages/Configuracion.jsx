@@ -120,6 +120,16 @@ export default function Configuracion() {
           </div>
 
           <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">3 veces por semana</label>
+            <input
+              type="number" min="0"
+              value={valores['precio_3_veces_semana'] ?? ''}
+              onChange={e => set('precio_3_veces_semana', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Upgrade proporcional (por semana)</label>
             <p className="text-xs text-gray-400 mb-1">Valor por semana restante al pasar de 1x a 2x durante el mes vigente</p>
             <input
@@ -163,6 +173,16 @@ export default function Configuracion() {
             <DiaSelector
               value={valores['dias_2_veces_semana'] ?? '2,6'}
               onChange={v => set('dias_2_veces_semana', v)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              3 veces por semana
+            </label>
+            <DiaSelector
+              value={valores['dias_3_veces_semana'] ?? '2,4,6'}
+              onChange={v => set('dias_3_veces_semana', v)}
             />
           </div>
         </div>

@@ -34,7 +34,7 @@ function StatCard({ icon: Icon, label, value, color, oculto, onToggle }) {
 }
 
 // Calcula todos los meses adeudados de un alumno desde su inscripción
-function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
+function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limiteActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -54,16 +54,19 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc) {
       continue
     }
 
-    const pagado = todosPagos.some(
+    const pagosMes = todosPagos.filter(
       p => p.alumno_id === alumno.id &&
            p.mes_correspondiente === mes &&
-           p.año_correspondiente === anio &&
-           (p.tipo ?? 'normal') !== 'prueba'
+           p.año_correspondiente === anio
     )
 
-    if (!pagado) {
+    const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
+    const precioEsperado = precios[alumno.frecuencia] ?? 120000
+
+    if (totalPagado < precioEsperado) {
       const vencimiento = new Date(anio, mes - 1, diaVenc)
-      mesesDeuda.push({ mes, anio, vencido: hoy > vencimiento })
+      const esParcial = totalPagado > 0
+      mesesDeuda.push({ mes, anio, vencido: hoy > vencimiento, parcial: esParcial, totalPagado, restante: precioEsperado - totalPagado })
     }
 
     cursor.setMonth(cursor.getMonth() + 1)
@@ -191,6 +194,9 @@ export default function Dashboard() {
     // Configuración
     const { data: config } = await supabase.from('configuracion').select('clave, valor')
     const diaVenc = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+    const p1 = parseInt(config?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+    const p2 = parseInt(config?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+    const p3 = parseInt(config?.find(c => c.clave === 'precio_3_veces_semana')?.valor ?? '160000')
 
     // Prefijo del mes actual para filtrar por fecha_pago (YYYY-MM)
     const prefijoMes = `${anioActual}-${String(mesActual).padStart(2, '0')}`
@@ -210,7 +216,7 @@ export default function Dashboard() {
     const deudoresCalculados = (alumnosActivos ?? [])
       .map(a => ({
         ...a,
-        mesesDeuda: calcularMesesDeuda(a, todosPagos ?? [], hoy, diaVenc),
+        mesesDeuda: calcularMesesDeuda(a, todosPagos ?? [], hoy, diaVenc, { 1: p1, 2: p2, 3: p3 }),
       }))
       .filter(a => a.mesesDeuda.length > 0)
       .sort((a, b) => b.mesesDeuda.length - a.mesesDeuda.length) // más deudas primero

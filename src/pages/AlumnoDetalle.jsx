@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Pencil, Phone, Calendar, Users, BookOpen,
   Clock, CreditCard, ChevronDown, ChevronRight, Loader2,
-  CheckCircle2, AlertCircle, AlertTriangle, Download, X, Save, Plus,
+  CheckCircle2, AlertCircle, AlertTriangle, Download, X, Save, Plus, Trash2,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { generateReceipt, calcularProximoVenc } from '../lib/generateReceipt'
@@ -40,7 +40,6 @@ function calcularEdad(fechaNacimiento) {
 
 function calcularMesesDeuda(alumno, pagos, hoy, diaVenc, precios) {
   if (!alumno.fecha_inscripcion) return []
-  const precioMensual = precios ? (alumno.frecuencia === 1 ? precios[1] : precios[2]) : 0
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -50,26 +49,15 @@ function calcularMesesDeuda(alumno, pagos, hoy, diaVenc, precios) {
     const anio = cursor.getFullYear()
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
-    const totalNormal = pagos
-      .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo == null || p.tipo === 'normal'))
-      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
-    if (esActual && !vencioHoy) {
-      // Mes actual antes del vencimiento: solo mostrar si hay pago incompleto
-      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
-        deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal, vencido: false })
-      }
-      cursor.setMonth(cursor.getMonth() + 1)
-      continue
-    }
-    const vencimiento = new Date(anio, mes - 1, diaVenc)
-    const vencido     = hoy > vencimiento
-    if (precioMensual > 0 && totalNormal >= precioMensual) {
-      // pagado completo
-    } else if (totalNormal > 0) {
-      deuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal, vencido })
-    } else {
-      const tienePrueba = pagos.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && p.tipo === 'prueba')
-      deuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false, saldo: precioMensual, vencido })
+    if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
+    
+    const pagosMes = pagos.filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio)
+    const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
+    const precioEsperado = precios[alumno.frecuencia] ?? 120000
+
+    if (totalPagado < precioEsperado) {
+      const esParcial = totalPagado > 0
+      deuda.push({ mes, anio, parcial: esParcial, totalPagado, restante: precioEsperado - totalPagado })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -96,13 +84,18 @@ export default function AlumnoDetalle() {
   const [pagos, setPagos]           = useState([])
   const [asistencia, setAsistencia] = useState([])
   const [horarios, setHorarios]     = useState([])
-  const [horario, setHorario]               = useState(null)
+  const [horario, setHorario]                     = useState(null)
   const [horarioSecundario, setHorarioSecundario] = useState(null)
-  const [config, setConfig]                 = useState({ diaVenc: 5, precio1: 70000, precio2: 120000, precioUpgrade: 15000, fechaInicioEntresemana: null })
-  const [semanasUpgrade, setSemanasUpgrade] = useState(1)
-  const [loading, setLoading]               = useState(true)
-  const [expandidos, setExpandidos]         = useState({})
-  const [downloading, setDownloading]       = useState(null)
+  const [config, setConfig]                       = useState({ diaVenc: 5, precio1: 70000, precio2: 120000, precio3: 160000, precioUpgrade: 15000, fechaInicioEntresemana: null })
+  const [semanasUpgrade, setSemanasUpgrade]       = useState(1)
+  const [loading, setLoading]                     = useState(true)
+  const [expandidos, setExpandidos]               = useState({})
+  const [downloading, setDownloading]             = useState(null)
+
+  // Notas
+  const [notas, setNotas]           = useState([])
+  const [nuevaNota, setNuevaNota]   = useState('')
+  const [guardandoNota, setGuardandoNota] = useState(false)
 
   // Edición inline
   const [editando, setEditando]   = useState(false)
@@ -126,26 +119,30 @@ export default function AlumnoDetalle() {
       { data: asistenciaData },
       { data: configData },
       { data: horariosData },
+      { data: notasData },
     ] = await Promise.all([
       supabase.from('alumnos').select('*').eq('id', id).single(),
       supabase.from('pagos').select('*').eq('alumno_id', id).order('fecha_pago', { ascending: false }),
       supabase.from('asistencia').select('fecha, presente').eq('alumno_id', id).order('fecha', { ascending: false }),
       supabase.from('configuracion').select('clave, valor'),
       supabase.from('horarios').select('*').order('hora_inicio'),
+      supabase.from('alumno_notas').select('*').eq('alumno_id', id).order('created_at', { ascending: false }),
     ])
 
     setAlumno(alumnoData)
     setPagos(pagosData ?? [])
     setAsistencia(asistenciaData ?? [])
     setHorarios(horariosData ?? [])
+    setNotas(notasData ?? [])
 
     if (configData) {
-      const diaVenc      = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
-      const precio1      = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
-      const precio2      = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const diaVenc = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const precio1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+      const precio2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const precio3 = parseInt(configData.find(c => c.clave === 'precio_3_veces_semana')?.valor ?? '160000')
       const precioUpgrade = parseInt(configData.find(c => c.clave === 'precio_upgrade_semana')?.valor ?? '15000')
       const fechaInicioEntresemana = configData.find(c => c.clave === 'fecha_inicio_entresemana')?.valor ?? null
-      setConfig({ diaVenc, precio1, precio2, precioUpgrade, fechaInicioEntresemana })
+      setConfig({ diaVenc, precio1, precio2, precio3, precioUpgrade, fechaInicioEntresemana })
     }
 
     if (horariosData) {
@@ -154,6 +151,34 @@ export default function AlumnoDetalle() {
     }
 
     setLoading(false)
+  }
+
+  const handleAgregarNota = async (e) => {
+    e.preventDefault()
+    if (!nuevaNota.trim()) return
+    setGuardandoNota(true)
+    const { data, error } = await supabase
+      .from('alumno_notas')
+      .insert({ alumno_id: id, contenido: nuevaNota.trim() })
+      .select()
+      .single()
+    setGuardandoNota(false)
+    if (error) {
+      alert('Error al guardar la nota: ' + error.message)
+      return
+    }
+    setNotas(prev => [data, ...prev])
+    setNuevaNota('')
+  }
+
+  const handleBorrarNota = async (notaId) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta nota?')) return
+    const { error } = await supabase.from('alumno_notas').delete().eq('id', notaId)
+    if (error) {
+      alert('Error al eliminar la nota: ' + error.message)
+      return
+    }
+    setNotas(prev => prev.filter(n => n.id !== notaId))
   }
 
   const startEdit = () => {
@@ -197,28 +222,26 @@ export default function AlumnoDetalle() {
 
   const mesesDeuda = useMemo(() => {
     if (!alumno) return []
-    return calcularMesesDeuda(alumno, pagos, new Date(), config.diaVenc, { 1: config.precio1, 2: config.precio2 })
-  }, [alumno, pagos, config.diaVenc, config.precio1, config.precio2])
+    return calcularMesesDeuda(alumno, pagos, new Date(), config.diaVenc, { 1: config.precio1, 2: config.precio2, 3: config.precio3 })
+  }, [alumno, pagos, config])
 
   // Abre el modal pre-rellenado con el mes más antiguo adeudado
   const openPagoModal = () => {
     const hoy          = new Date()
-    const precioNormal = alumno.frecuencia === 1 ? config.precio1 : config.precio2
+    const precioNormal = alumno.frecuencia === 1 ? config.precio1 : (alumno.frecuencia === 2 ? config.precio2 : config.precio3)
 
     // Tomar el mes más antiguo pendiente (mesesDeuda ya viene ordenado cronológicamente)
     const mesPendiente = mesesDeuda[0] ?? {
       mes:  hoy.getMonth() + 1,
       anio: hoy.getFullYear(),
       parcial: false,
+      restante: precioNormal,
     }
 
-    // Si ya tiene pago parcial, solo falta el complemento
-    const esParcial = mesPendiente.parcial  // false | 'prueba' | 'incompleto'
-    const montoDefault = esParcial === 'prueba'
-      ? Math.max(0, precioNormal - PRECIO_PRUEBA)
-      : esParcial === 'incompleto'
-        ? (mesPendiente.saldo ?? precioNormal)
-        : precioNormal
+    const esParcial = mesPendiente.parcial
+    const montoDefault = esParcial || (mesPendiente.restante < precioNormal && mesPendiente.restante > 0)
+      ? mesPendiente.restante
+      : precioNormal
 
     setPagoForm({
       mes:      mesPendiente.mes,
@@ -226,7 +249,7 @@ export default function AlumnoDetalle() {
       fecha:    hoy.toLocaleDateString('en-CA'),
       monto:    String(montoDefault),
       tipo:     'normal',
-      esParcial,
+      esParcial: esParcial || (mesPendiente.restante < precioNormal && mesPendiente.restante > 0),
     })
     setSemanasUpgrade(1)
     setPagoError('')
@@ -260,7 +283,7 @@ export default function AlumnoDetalle() {
         [...pagos, nuevoPago],
         new Date(),
         config.diaVenc,
-        { 1: config.precio1, 2: config.precio2 }
+        { 1: config.precio1, 2: config.precio2, 3: config.precio3 }
       )
       await generateReceipt({
         pagoId:           nuevoPago.id,
@@ -410,7 +433,7 @@ export default function AlumnoDetalle() {
               </span>
             </div>
             <p className="text-gray-500 text-sm mt-0.5">
-              {NIVEL_LABEL[alumno.nivel]} · {alumno.frecuencia === 1 ? '1 vez/semana' : '2 veces/semana'}
+              {NIVEL_LABEL[alumno.nivel]} · {alumno.frecuencia === 1 ? '1 vez/semana' : (alumno.frecuencia === 2 ? '2 veces/semana' : '3 veces/semana')}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -459,7 +482,7 @@ export default function AlumnoDetalle() {
                 },
                 { icon: Calendar,  label: 'Inscripto desde', value: new Date(alumno.fecha_inscripcion + 'T00:00:00').toLocaleDateString('es-PY') },
                 { icon: BookOpen,  label: 'Nivel',           value: NIVEL_LABEL[alumno.nivel] },
-                { icon: Users,     label: 'Frecuencia',      value: alumno.frecuencia === 1 ? '1 vez por semana' : '2 veces por semana' },
+                { icon: Users,     label: 'Frecuencia',      value: alumno.frecuencia === 1 ? '1 vez por semana' : (alumno.frecuencia === 2 ? '2 veces por semana' : '3 veces por semana') },
                 (horario || horarioSecundario) && {
                   icon: Clock, label: 'Horario / Grupo',
                   value: [
@@ -547,6 +570,7 @@ export default function AlumnoDetalle() {
                   >
                     <option value={1}>1 vez/sem</option>
                     <option value={2}>2 veces/sem</option>
+                    <option value={3}>3 veces/sem</option>
                   </select>
                 </Field>
               </div>
@@ -854,6 +878,69 @@ export default function AlumnoDetalle() {
               </>
             )}
           </div>
+
+          {/* Sección de Notas e Historial */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mt-6">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 bg-gray-50/50">
+              <div className="flex items-center gap-2">
+                <BookOpen size={16} className="text-primary-600" />
+                <h3 className="font-semibold text-gray-800 text-sm">Observaciones y Notas</h3>
+              </div>
+              <span className="text-xs text-gray-400 font-medium">{notas.length} nota{notas.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            {/* Formulario de nueva nota */}
+            <form onSubmit={handleAgregarNota} className="p-5 border-b border-gray-50 flex gap-2">
+              <input
+                type="text"
+                value={nuevaNota}
+                onChange={e => setNuevaNota(e.target.value)}
+                placeholder="Escribe una observación sobre el alumno..."
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white"
+                required
+              />
+              <button
+                type="submit"
+                disabled={guardandoNota || !nuevaNota.trim()}
+                className="px-4 py-2 bg-primary-800 hover:bg-primary-700 text-white rounded-lg text-sm font-medium transition disabled:opacity-60 flex items-center gap-1 shrink-0"
+              >
+                {guardandoNota ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                <span>Agregar</span>
+              </button>
+            </form>
+
+            {/* Lista de notas */}
+            {notas.length === 0 ? (
+              <p className="text-center text-gray-400 py-12 text-sm">Sin observaciones registradas para este alumno.</p>
+            ) : (
+              <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
+                {notas.map(nota => (
+                  <div key={nota.id} className="px-5 py-3.5 flex items-start justify-between gap-4 group hover:bg-gray-50/50 transition">
+                    <div className="space-y-1">
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap">{nota.contenido}</p>
+                      <p className="text-[10px] text-gray-400">
+                        {new Date(nota.created_at).toLocaleString('es-PY', {
+                          day: '2-digit',
+                          month: '2-digit',
+                          year: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleBorrarNota(nota.id)}
+                      className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 transition opacity-0 group-hover:opacity-100 shrink-0"
+                      title="Eliminar observación"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -943,11 +1030,11 @@ export default function AlumnoDetalle() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       type="button"
-                      onClick={() => setPagoForm(f => ({ ...f, tipo: 'normal', monto: String(alumno.frecuencia === 1 ? config.precio1 : config.precio2) }))}
+                      onClick={() => setPagoForm(f => ({ ...f, tipo: 'normal', monto: String(alumno.frecuencia === 1 ? config.precio1 : (alumno.frecuencia === 2 ? config.precio2 : config.precio3)) }))}
                       className={`py-2 px-2 rounded-lg text-xs font-medium border-2 transition text-left ${pagoForm.tipo === 'normal' ? 'border-primary-600 bg-primary-50 text-primary-800' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}
                     >
                       <div className="font-semibold">Cuota normal</div>
-                      <div className="opacity-70">Gs. {(alumno.frecuencia === 1 ? config.precio1 : config.precio2).toLocaleString('es-PY')}</div>
+                      <div className="opacity-70">Gs. {(alumno.frecuencia === 1 ? config.precio1 : (alumno.frecuencia === 2 ? config.precio2 : config.precio3)).toLocaleString('es-PY')}</div>
                     </button>
                     <button
                       type="button"

@@ -129,7 +129,7 @@ export default function Pagos() {
       const maxFechaB = Math.max(...b.items.map(p => new Date(p.fecha_pago).getTime()))
       return maxFechaB - maxFechaA
     })
-  }, [pagos, filtroAlumno])
+  }, [pagos, filtroAlumno, busqueda])
 
   const toggleExpandido = (key) =>
     setExpandidos(prev => ({ ...prev, [key]: !prev[key] }))

@@ -39,7 +39,6 @@ function calcularEdad(fechaNacimiento) {
 }
 
 function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
-  const precioMensual = precios ? (alumno.frecuencia === 1 ? precios[1] : precios[2]) : 0
   const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limiteActual = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -53,30 +52,24 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
     const esActual    = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy   = hoy.getDate() > diaVenc
 
-    const totalNormal = todosPagos
-      .filter(p => p.alumno_id === alumno.id && p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
-      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
-
     if (esActual && !vencioHoy) {
-      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
-        mesesDeuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
-      }
       cursor.setMonth(cursor.getMonth() + 1)
       continue
     }
 
-    if (precioMensual > 0 && totalNormal >= precioMensual) {
-      // pagado completo
-    } else if (totalNormal > 0) {
-      mesesDeuda.push({ mes, anio, parcial: 'incompleto', saldo: precioMensual - totalNormal })
-    } else {
-      const tienePrueba = todosPagos.some(
-        p => p.alumno_id === alumno.id &&
-             p.mes_correspondiente === mes &&
-             p.año_correspondiente === anio &&
-             p.tipo === 'prueba'
-      )
-      mesesDeuda.push({ mes, anio, parcial: tienePrueba ? 'prueba' : false })
+    const pagosMes = todosPagos.filter(
+      p => p.alumno_id === alumno.id &&
+           p.mes_correspondiente === mes &&
+           p.año_correspondiente === anio
+    )
+
+    const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
+    const precioEsperado = precios[alumno.frecuencia] ?? 120000
+
+    if (totalPagado < precioEsperado) {
+      // Si pagó algo pero es menos del plan actual, es deuda parcial
+      const esParcial = totalPagado > 0
+      mesesDeuda.push({ mes, anio, parcial: esParcial, totalPagado, restante: precioEsperado - totalPagado })
     }
 
     cursor.setMonth(cursor.getMonth() + 1)
@@ -90,10 +83,11 @@ export default function Alumnos() {
   const navigate = useNavigate()
   const [alumnos, setAlumnos]       = useState([])
   const [horarios, setHorarios]     = useState([])
-  const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
+  const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000, 3: 160000 })
   const [diaVenc, setDiaVenc]       = useState(5)
   const [search, setSearch]         = useState('')
   const [filtroHorario, setFiltroHorario] = useState('')
+  const [filtroEstado, setFiltroEstado]   = useState('activo')
   const [loading, setLoading]       = useState(true)
   const [saving, setSaving]         = useState(false)
   const [modalOpen, setModalOpen]   = useState(false)
@@ -120,18 +114,20 @@ export default function Alumnos() {
     let dv = 5
     let p1 = 70000
     let p2 = 120000
+    let p3 = 160000
     if (configData) {
       p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      p3 = parseInt(configData.find(c => c.clave === 'precio_3_veces_semana')?.valor ?? '160000')
       dv = parseInt(configData.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
-      setPrecios({ 1: p1, 2: p2 })
+      setPrecios({ 1: p1, 2: p2, 3: p3 })
       setDiaVenc(dv)
     }
 
     const hoy = new Date();
     const finalAlumnos = (alumnosData ?? []).map(a => ({
       ...a,
-      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, dv, { 1: p1, 2: p2 })
+      mesesDeuda: calcularMesesDeuda(a, pagosData ?? [], hoy, dv, { 1: p1, 2: p2, 3: p3 })
     }))
 
     setAlumnos(finalAlumnos)
@@ -152,7 +148,7 @@ export default function Alumnos() {
         a.fecha_inscripcion,
         a.estado,
         NIVEL_LABEL[a.nivel] ?? a.nivel,
-        a.frecuencia === 1 ? '1 vez/semana' : '2 veces/semana',
+        a.frecuencia === 1 ? '1 vez/semana' : (a.frecuencia === 2 ? '2 veces/semana' : '3 veces/semana'),
         h ? `${h.nombre} ${h.dia_semana} ${h.hora_inicio.slice(0,5)}` : '',
       ]
     })
@@ -296,6 +292,7 @@ export default function Alumnos() {
     if (!a.nombre_completo.toLowerCase().includes(search.toLowerCase())) return false
     if (filtroHorario === '__sin__') return !a.horario_id
     if (filtroHorario && a.horario_id !== filtroHorario) return false
+    if (filtroEstado && a.estado !== filtroEstado) return false
     return true
   })
 
@@ -351,15 +348,24 @@ export default function Alumnos() {
           ))}
           <option value="__sin__">Sin grupo asignado</option>
         </select>
-        {(search || filtroHorario) && (
+        <select
+          value={filtroEstado}
+          onChange={e => setFiltroEstado(e.target.value)}
+          className="px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 bg-white font-medium text-gray-700"
+        >
+          <option value="activo">Activos</option>
+          <option value="inactivo">Inactivos</option>
+          <option value="">Todos los estados</option>
+        </select>
+        {(search || filtroHorario || filtroEstado !== 'activo') && (
           <button
-            onClick={() => { setSearch(''); setFiltroHorario('') }}
+            onClick={() => { setSearch(''); setFiltroHorario(''); setFiltroEstado('activo') }}
             className="text-xs text-gray-400 hover:text-red-500 transition"
           >
             Limpiar filtros
           </button>
         )}
-        {(search || filtroHorario) && (
+        {(search || filtroHorario || filtroEstado !== 'activo') && (
           <span className="text-xs text-gray-500">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}</span>
         )}
       </div>
@@ -381,6 +387,7 @@ export default function Alumnos() {
                   <th className="px-6 py-3 font-medium">Edad</th>
                   <th className="px-6 py-3 font-medium">Nivel</th>
                   <th className="px-6 py-3 font-medium">Grupo</th>
+                  <th className="px-6 py-3 font-medium">Estado</th>
                   <th className="px-6 py-3 font-medium">Estado Cuota</th>
                   <th className="px-6 py-3 font-medium">Frecuencia</th>
                   <th className="px-6 py-3 font-medium">Teléfono</th>
@@ -423,6 +430,13 @@ export default function Alumnos() {
                       })()}
                     </td>
                     <td className="px-6 py-4">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                        a.estado === 'activo' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {a.estado === 'activo' ? 'Activo' : 'Inactivo'}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
                       {(() => {
                         const deuda = a.mesesDeuda || []
                         const sinPago        = deuda.some(m => m.parcial === false)
@@ -435,7 +449,7 @@ export default function Alumnos() {
                       })()}
                     </td>
                     <td className="px-6 py-4 text-gray-600">
-                      {a.frecuencia === 1 ? '1 vez/sem' : '2 veces/sem'}
+                      {a.frecuencia === 1 ? '1 vez/sem' : (a.frecuencia === 2 ? '2 veces/sem' : '3 veces/sem')}
                     </td>
                     <td className="px-6 py-4 text-gray-600">{a.telefono || '—'}</td>
                     <td className="px-6 py-4 text-right">
@@ -501,6 +515,7 @@ export default function Alumnos() {
                   >
                     <option value={1}>1 vez/semana — Gs. {precios[1].toLocaleString('es-PY')}</option>
                     <option value={2}>2 veces/semana — Gs. {precios[2].toLocaleString('es-PY')}</option>
+                    <option value={3}>3 veces/semana — Gs. {precios[3].toLocaleString('es-PY')}</option>
                   </select>
                 </div>
               </div>
