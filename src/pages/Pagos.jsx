@@ -24,8 +24,9 @@ const MESES = [
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc, precioMensual) {
-  const inscripcion = new Date(fechaInscripcion + 'T00:00:00')
+function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
+  if (!alumno.fecha_inscripcion) return []
+  const inscripcion = new Date(alumno.fecha_inscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
   const deuda = []
@@ -34,21 +35,38 @@ function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc, precioM
     const anio = cursor.getFullYear()
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
-    const totalNormal = pagosAlumno
-      .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
-      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
     if (esActual && !vencioHoy) {
-      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
-        deuda.push({ mes, anio, vencido: false, saldo: precioMensual - totalNormal })
-      }
       cursor.setMonth(cursor.getMonth() + 1)
       continue
     }
-    const pagado = precioMensual > 0 ? totalNormal >= precioMensual : totalNormal > 0
-    if (!pagado) {
+
+    const pagosMes = todosPagos.filter(
+      p => p.alumno_id === alumno.id &&
+           p.mes_correspondiente === mes &&
+           p.año_correspondiente === anio &&
+           (p.tipo ?? 'normal') !== 'prueba'
+    )
+    const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
+    const precioEsperado = precios[alumno.frecuencia] ?? 120000
+
+    const esPagadoCompleto = totalPagado >= precioEsperado || 
+                            totalPagado === precios[1] || 
+                            totalPagado === precios[2] || 
+                            (precios[3] && totalPagado === precios[3])
+
+    if (!esPagadoCompleto) {
       const vencimiento = new Date(anio, mes - 1, diaVenc)
-      const saldo = precioMensual > 0 && totalNormal > 0 ? precioMensual - totalNormal : undefined
-      deuda.push({ mes, anio, vencido: hoy > vencimiento, ...(saldo !== undefined && { saldo }) })
+      const tienePrueba = todosPagos.some(p => p.alumno_id === alumno.id && p.mes_correspondiente === mes && p.año_correspondiente === anio && p.tipo === 'prueba')
+      const esParcial = tienePrueba ? 'prueba' : (totalPagado > 0 ? 'incompleto' : false)
+      deuda.push({ 
+        mes, 
+        anio, 
+        vencido: hoy > vencimiento, 
+        parcial: esParcial, 
+        totalPagado, 
+        restante: precioEsperado - totalPagado,
+        saldo: precioEsperado - totalPagado
+      })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -253,16 +271,16 @@ export default function Pagos() {
     try {
       const alumnoId = pago.alumno_id ?? pago.alumnos?.id
       const [{ data: alumnoData }, { data: pagosList }, { data: config }] = await Promise.all([
-        supabase.from('alumnos').select('fecha_inscripcion, frecuencia').eq('id', alumnoId).single(),
-        supabase.from('pagos').select('mes_correspondiente, año_correspondiente, monto, tipo').eq('alumno_id', alumnoId),
+        supabase.from('alumnos').select('id, fecha_inscripcion, frecuencia').eq('id', alumnoId).single(),
+        supabase.from('pagos').select('alumno_id, mes_correspondiente, año_correspondiente, monto, tipo').eq('alumno_id', alumnoId),
         supabase.from('configuracion').select('clave, valor'),
       ])
       const diaVenc      = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
       const precio1      = parseInt(config?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       const precio2      = parseInt(config?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
-      const precioMensual = alumnoData ? (alumnoData.frecuencia === 1 ? precio1 : precio2) : 0
+      const precio3      = parseInt(config?.find(c => c.clave === 'precio_3_veces_semana')?.valor ?? '160000')
       const mesesPendientes = alumnoData
-        ? calcularMesesDeuda(alumnoData.fecha_inscripcion, pagosList ?? [], new Date(), diaVenc, precioMensual)
+        ? calcularMesesDeuda(alumnoData, pagosList ?? [], new Date(), diaVenc, { 1: precio1, 2: precio2, 3: precio3 })
         : []
 
       await generateReceipt({

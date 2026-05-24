@@ -55,9 +55,22 @@ function calcularMesesDeuda(alumno, pagos, hoy, diaVenc, precios) {
     const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
     const precioEsperado = precios[alumno.frecuencia] ?? 120000
 
-    if (totalPagado < precioEsperado) {
-      const esParcial = totalPagado > 0
-      deuda.push({ mes, anio, parcial: esParcial, totalPagado, restante: precioEsperado - totalPagado })
+    const esPagadoCompleto = totalPagado >= precioEsperado || 
+                            totalPagado === precios[1] || 
+                            totalPagado === precios[2] || 
+                            (precios[3] && totalPagado === precios[3])
+
+    if (!esPagadoCompleto) {
+      const tienePrueba = pagosMes.some(p => p.tipo === 'prueba')
+      const esParcial = tienePrueba ? 'prueba' : (totalPagado > 0 ? 'incompleto' : false)
+      deuda.push({ 
+        mes, 
+        anio, 
+        parcial: esParcial, 
+        totalPagado, 
+        restante: precioEsperado - totalPagado,
+        saldo: precioEsperado - totalPagado
+      })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -357,7 +370,8 @@ export default function AlumnoDetalle() {
       const diaVenc  = parseInt(configData?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
       const precio1  = parseInt(configData?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       const precio2  = parseInt(configData?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
-      const mesesPendientes = alumno ? calcularMesesDeuda(alumno, pagosList ?? [], new Date(), diaVenc, { 1: precio1, 2: precio2 }) : []
+      const precio3  = parseInt(configData?.find(c => c.clave === 'precio_3_veces_semana')?.valor ?? '160000')
+      const mesesPendientes = alumno ? calcularMesesDeuda(alumno, pagosList ?? [], new Date(), diaVenc, { 1: precio1, 2: precio2, 3: precio3 }) : []
       await generateReceipt({
         pagoId: pago.id, alumnoNombre: alumno?.nombre_completo ?? '—',
         alumnoNivel: alumno?.nivel ?? 'principiante', alumnoFrecuencia: alumno?.frecuencia ?? 1,

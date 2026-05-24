@@ -66,10 +66,22 @@ function calcularMesesDeuda(alumno, todosPagos, hoy, diaVenc, precios) {
     const totalPagado = pagosMes.reduce((sum, p) => sum + parseFloat(p.monto || 0), 0)
     const precioEsperado = precios[alumno.frecuencia] ?? 120000
 
-    if (totalPagado < precioEsperado) {
-      // Si pagó algo pero es menos del plan actual, es deuda parcial
-      const esParcial = totalPagado > 0
-      mesesDeuda.push({ mes, anio, parcial: esParcial, totalPagado, restante: precioEsperado - totalPagado })
+    const esPagadoCompleto = totalPagado >= precioEsperado || 
+                            totalPagado === precios[1] || 
+                            totalPagado === precios[2] || 
+                            (precios[3] && totalPagado === precios[3])
+
+    if (!esPagadoCompleto) {
+      const tienePrueba = pagosMes.some(p => p.tipo === 'prueba')
+      const esParcial = tienePrueba ? 'prueba' : (totalPagado > 0 ? 'incompleto' : false)
+      mesesDeuda.push({ 
+        mes, 
+        anio, 
+        parcial: esParcial, 
+        totalPagado, 
+        restante: precioEsperado - totalPagado,
+        saldo: precioEsperado - totalPagado
+      })
     }
 
     cursor.setMonth(cursor.getMonth() + 1)
