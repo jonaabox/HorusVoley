@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, TrendingUp, DollarSign, Eye, EyeOff, Users, Activity, Banknote, ArrowLeftRight, Download, Wallet } from 'lucide-react'
+import { BarChart3, TrendingUp, DollarSign, Eye, EyeOff, Users, Activity, Banknote, ArrowLeftRight, Download, Wallet, CalendarDays } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 
 const MESES      = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
@@ -122,9 +122,29 @@ export default function Reportes() {
     count: edades.filter(e => e !== null && g.test(e)).length,
   }))
 
+  // ── Ingresos diarios ────────────────────────────────────────────────────────
+  const hoy        = new Date()
+  const prefijoMes = `${anio}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
+  const todayStr   = `${anio}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`
+
+  const ingresosHoy = pagosRaw
+    .filter(p => p.fecha_pago === todayStr)
+    .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+
+  const diasConIngresos = Object.values(
+    pagosRaw
+      .filter(p => p.fecha_pago?.startsWith(prefijoMes))
+      .reduce((acc, p) => {
+        const f = p.fecha_pago
+        if (!acc[f]) acc[f] = { fecha: f, total: 0, efectivo: 0, transf: 0 }
+        acc[f].total    += parseFloat(p.monto || 0)
+        if ((p.metodo_pago ?? 'efectivo') === 'efectivo') acc[f].efectivo += parseFloat(p.monto || 0)
+        else acc[f].transf += parseFloat(p.monto || 0)
+        return acc
+      }, {})
+  ).sort((a, b) => b.fecha.localeCompare(a.fecha))
+
   // ── Asistencia ───────────────────────────────────────────────────────────────
-  const hoy = new Date()
-  const prefijoMes     = `${anio}-${String(hoy.getMonth() + 1).padStart(2, '0')}`
   const asisMes        = asistencia.filter(a => a.fecha?.startsWith(prefijoMes))
   const totalRegistros = asistencia.length
   const totalPresentes = asistencia.filter(a => a.presente).length
@@ -237,7 +257,7 @@ export default function Reportes() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-center gap-5">
           <div className="p-3 rounded-xl bg-primary-800">
             <DollarSign size={22} className="text-white" />
@@ -257,6 +277,17 @@ export default function Reportes() {
             <p className="text-gray-500 text-sm">Mejor mes</p>
             <p className="text-2xl font-bold text-gray-800">
               {mesMayor?.mes} — {oculto ? 'Gs. ●●●●●●' : fmtGs(mesMayor?.total ?? 0)}
+            </p>
+          </div>
+        </div>
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex items-center gap-5">
+          <div className="p-3 rounded-xl bg-teal-600">
+            <CalendarDays size={22} className="text-white" />
+          </div>
+          <div>
+            <p className="text-gray-500 text-sm">Ingresos hoy</p>
+            <p className="text-2xl font-bold text-gray-800">
+              {oculto ? 'Gs. ●●●●●●' : fmtGs(ingresosHoy)}
             </p>
           </div>
         </div>
@@ -408,6 +439,66 @@ export default function Reportes() {
                 )}
               </tbody>
             </table>
+          </div>
+
+          {/* Desglose diario — mes actual */}
+          <div className="mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <CalendarDays size={15} className="text-primary-700" />
+              <h4 className="font-semibold text-gray-700 text-sm">
+                Ingresos diarios — {MESES_FULL[hoy.getMonth()]}
+              </h4>
+            </div>
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-primary-950 text-primary-200 text-left">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Fecha</th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      <span className="flex items-center justify-end gap-1.5">
+                        <Banknote size={13} /> Efectivo
+                      </span>
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">
+                      <span className="flex items-center justify-end gap-1.5">
+                        <ArrowLeftRight size={13} /> Transferencia
+                      </span>
+                    </th>
+                    <th className="px-4 py-3 font-medium text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {diasConIngresos.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-4 py-8 text-center text-gray-400 text-sm">
+                        Sin ingresos registrados este mes.
+                      </td>
+                    </tr>
+                  ) : (
+                    diasConIngresos.map(d => {
+                      const esHoy = d.fecha === todayStr
+                      return (
+                        <tr key={d.fecha} className={`transition-colors ${esHoy ? 'bg-teal-50 hover:bg-teal-50/70' : 'hover:bg-gray-50'}`}>
+                          <td className="px-4 py-3 font-medium text-gray-700">
+                            {new Date(d.fecha + 'T00:00:00').toLocaleDateString('es-PY', { weekday: 'short', day: 'numeric', month: 'short' })}
+                            {esHoy && <span className="ml-2 text-xs text-teal-600 font-semibold">hoy</span>}
+                          </td>
+                          <td className="px-4 py-3 text-right text-green-700 font-medium">
+                            {oculto ? '●●●●●●' : fmtGs(d.efectivo)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-blue-700 font-medium">
+                            {oculto ? '●●●●●●' : fmtGs(d.transf)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-bold text-gray-800">
+                            {oculto ? '●●●●●●' : fmtGs(d.total)}
+                          </td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}

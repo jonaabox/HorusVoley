@@ -18,14 +18,15 @@ const NIVEL_COLOR = {
 }
 
 const EMPTY_FORM = {
-  nombre_completo:   '',
-  fecha_nacimiento:  '',
-  telefono:          '',
-  fecha_inscripcion: new Date().toISOString().split('T')[0],
-  estado:            'activo',
-  frecuencia:        2,
-  nivel:             'principiante',
-  horario_id:        '',
+  nombre_completo:       '',
+  fecha_nacimiento:      '',
+  telefono:              '',
+  fecha_inscripcion:     new Date().toISOString().split('T')[0],
+  estado:                'activo',
+  frecuencia:            1,
+  nivel:                 'principiante',
+  horario_id:            '',
+  horario_secundario_id: '',
 }
 
 function calcularEdad(fechaNacimiento) {
@@ -167,26 +168,28 @@ export default function Alumnos() {
   }
 
   const openCreate = () => {
-    setForm(EMPTY_FORM)
+    const hoyLocal = new Date().toLocaleDateString('en-CA')
+    setForm({ ...EMPTY_FORM, fecha_inscripcion: hoyLocal })
     setEditingId(null)
     setError('')
     setPagarAhora(false)
     setTipoPago('normal')
-    setMontoPago(String(precios[2]))
+    setMontoPago(String(precios[1]))
     setMetodoPago('efectivo')
     setModalOpen(true)
   }
 
   const openEdit = (alumno) => {
     setForm({
-      nombre_completo:   alumno.nombre_completo,
-      fecha_nacimiento:  alumno.fecha_nacimiento ?? '',
-      telefono:          alumno.telefono ?? '',
-      fecha_inscripcion: alumno.fecha_inscripcion,
-      estado:            alumno.estado,
-      frecuencia:        alumno.frecuencia,
-      nivel:             alumno.nivel,
-      horario_id:        alumno.horario_id ?? '',
+      nombre_completo:       alumno.nombre_completo,
+      fecha_nacimiento:      alumno.fecha_nacimiento ?? '',
+      telefono:              alumno.telefono ?? '',
+      fecha_inscripcion:     alumno.fecha_inscripcion,
+      estado:                alumno.estado,
+      frecuencia:            alumno.frecuencia,
+      nivel:                 alumno.nivel,
+      horario_id:            alumno.horario_id ?? '',
+      horario_secundario_id: alumno.horario_secundario_id ?? '',
     })
     setEditingId(alumno.id)
     setError('')
@@ -196,7 +199,14 @@ export default function Alumnos() {
 
   const handleFrecuenciaChange = (val) => {
     const freq = parseInt(val)
-    setForm(f => ({ ...f, frecuencia: freq }))
+    const horarioActual = horarios.find(h => h.id === form.horario_id)
+    const compatible = !horarioActual || horarioActual.frecuencia == null || horarioActual.frecuencia === freq
+    setForm(f => ({
+      ...f,
+      frecuencia:            freq,
+      horario_id:            compatible ? f.horario_id : '',
+      horario_secundario_id: freq === 1 ? '' : f.horario_secundario_id,
+    }))
     if (tipoPago === 'normal') setMontoPago(String(precios[freq]))
   }
 
@@ -214,7 +224,13 @@ export default function Alumnos() {
     setSaving(true)
     setError('')
 
-    const payload = { ...form, frecuencia: parseInt(form.frecuencia), horario_id: form.horario_id || null }
+    const freq = parseInt(form.frecuencia)
+    const payload = {
+      ...form,
+      frecuencia:            freq,
+      horario_id:            form.horario_id || null,
+      horario_secundario_id: freq === 2 ? (form.horario_secundario_id || null) : null,
+    }
 
     if (editingId) {
       const { error: err } = await supabase.from('alumnos').update(payload).eq('id', editingId)
@@ -423,10 +439,12 @@ export default function Alumnos() {
                     <td className="px-6 py-4">
                       {(() => {
                         const deuda = a.mesesDeuda || []
-                        const sinPago   = deuda.some(m => !m.parcial)
-                        const soloPrueba = deuda.length > 0 && !sinPago
-                        if (sinPago)    return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
-                        if (soloPrueba) return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba parcial</span>
+                        const sinPago        = deuda.some(m => m.parcial === false)
+                        const soloIncompleto = deuda.length > 0 && !sinPago && deuda.some(m => m.parcial === 'incompleto')
+                        const soloPrueba     = deuda.length > 0 && !sinPago && !soloIncompleto
+                        if (sinPago)         return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">Debe</span>
+                        if (soloIncompleto)  return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">Incompleto</span>
+                        if (soloPrueba)      return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700">Prueba parcial</span>
                         return <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Al día</span>
                       })()}
                     </td>
@@ -504,19 +522,45 @@ export default function Alumnos() {
 
               {/* Horario */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Horario / Grupo</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  {form.frecuencia === 2 ? 'Horario Sábado' : 'Horario / Grupo'}
+                </label>
                 <select
                   value={form.horario_id}
                   onChange={e => setForm({ ...form, horario_id: e.target.value })}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
                 >
                   <option value="">Sin asignar</option>
-                  {horarios.map(h => (
-                    <option key={h.id} value={h.id}>
-                      {h.nombre} — {h.dia_semana} {h.hora_inicio.slice(0, 5)}–{h.hora_fin.slice(0, 5)}
-                    </option>
-                  ))}
+                  {horarios
+                    .filter(h => h.frecuencia == null)
+                    .map(h => (
+                      <option key={h.id} value={h.id}>
+                        {h.nombre} — {h.dia_semana} {h.hora_inicio.slice(0, 5)}–{h.hora_fin.slice(0, 5)}
+                      </option>
+                    ))
+                  }
                 </select>
+
+                {form.frecuencia === 2 && (
+                  <>
+                    <label className="block text-sm font-medium text-gray-700 mb-1 mt-3">Horario entre semana</label>
+                    <select
+                      value={form.horario_secundario_id ?? ''}
+                      onChange={e => setForm({ ...form, horario_secundario_id: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    >
+                      <option value="">Sin asignar</option>
+                      {horarios
+                        .filter(h => h.dia_semana !== 'Sábado')
+                        .map(h => (
+                          <option key={h.id} value={h.id}>
+                            {h.nombre} — {h.dia_semana} {h.hora_inicio.slice(0, 5)}–{h.hora_fin.slice(0, 5)}
+                          </option>
+                        ))
+                      }
+                    </select>
+                  </>
+                )}
               </div>
 
               {/* Fecha nacimiento + Teléfono */}

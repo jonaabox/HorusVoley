@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useConfirm } from '../hooks/useConfirm'
+import { useNavigate } from 'react-router-dom'
 import { Plus, X, Loader2, Trash2, Download, CircleCheckBig, ChevronDown, ChevronRight, User, Search, Banknote, ArrowLeftRight } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { generateReceipt, calcularProximoVenc } from '../lib/generateReceipt'
@@ -7,12 +8,23 @@ import logoUrl from '../IMG_6191-removebg-preview.png'
 
 const PRECIO_PRUEBA = 25000
 
+function calcularSemanasRestantes(fechaInscripcion, fechaInicioEntresemana) {
+  const hoy = new Date()
+  const dia = new Date(fechaInscripcion + 'T00:00:00').getDate()
+  const proximoVenc = new Date(hoy.getFullYear(), hoy.getMonth() + 1, dia)
+  const inicio = fechaInicioEntresemana
+    ? new Date(fechaInicioEntresemana + 'T00:00:00')
+    : hoy
+  const diasRestantes = Math.ceil((proximoVenc - inicio) / (1000 * 60 * 60 * 24))
+  return Math.max(1, Math.round(diasRestantes / 7))
+}
+
 const MESES = [
   'Enero','Febrero','Marzo','Abril','Mayo','Junio',
   'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre',
 ]
 
-function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc) {
+function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc, precioMensual) {
   const inscripcion = new Date(fechaInscripcion + 'T00:00:00')
   let cursor = new Date(inscripcion.getFullYear(), inscripcion.getMonth(), 1)
   const limite = new Date(hoy.getFullYear(), hoy.getMonth(), 1)
@@ -22,11 +34,21 @@ function calcularMesesDeuda(fechaInscripcion, pagosAlumno, hoy, diaVenc) {
     const anio = cursor.getFullYear()
     const esActual  = anio === hoy.getFullYear() && mes === (hoy.getMonth() + 1)
     const vencioHoy = hoy.getDate() > diaVenc
-    if (esActual && !vencioHoy) { cursor.setMonth(cursor.getMonth() + 1); continue }
-    const pagado = pagosAlumno.some(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+    const totalNormal = pagosAlumno
+      .filter(p => p.mes_correspondiente === mes && p.año_correspondiente === anio && (p.tipo ?? 'normal') !== 'prueba')
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    if (esActual && !vencioHoy) {
+      if (totalNormal > 0 && precioMensual > 0 && totalNormal < precioMensual) {
+        deuda.push({ mes, anio, vencido: false, saldo: precioMensual - totalNormal })
+      }
+      cursor.setMonth(cursor.getMonth() + 1)
+      continue
+    }
+    const pagado = precioMensual > 0 ? totalNormal >= precioMensual : totalNormal > 0
     if (!pagado) {
       const vencimiento = new Date(anio, mes - 1, diaVenc)
-      deuda.push({ mes, anio, vencido: hoy > vencimiento })
+      const saldo = precioMensual > 0 && totalNormal > 0 ? precioMensual - totalNormal : undefined
+      deuda.push({ mes, anio, vencido: hoy > vencimiento, ...(saldo !== undefined && { saldo }) })
     }
     cursor.setMonth(cursor.getMonth() + 1)
   }
@@ -45,18 +67,22 @@ const EMPTY_FORM = {
 
 export default function Pagos() {
   const { confirm, ConfirmModal } = useConfirm()
+  const navigate = useNavigate()
   const [pagos, setPagos]           = useState([])
   const [alumnos, setAlumnos]       = useState([])
-  const [precios, setPrecios]       = useState({ 1: 70000, 2: 120000 })
-  const [loading, setLoading]       = useState(true)
-  const [saving, setSaving]         = useState(false)
-  const [downloading, setDownloading] = useState(null) // pagoId descargando
-  const [modalOpen, setModalOpen]   = useState(false)
-  const [form, setForm]             = useState(EMPTY_FORM)
-  const [error, setError]           = useState('')
+  const [precios, setPrecios]           = useState({ 1: 70000, 2: 120000 })
+  const [precioUpgrade, setPrecioUpgrade] = useState(15000)
+  const [fechaInicioEntresemana, setFechaInicioEntresemana] = useState(null)
+  const [semanasUpgrade, setSemanasUpgrade] = useState(1)
+  const [loading, setLoading]           = useState(true)
+  const [saving, setSaving]             = useState(false)
+  const [downloading, setDownloading]   = useState(null)
+  const [modalOpen, setModalOpen]       = useState(false)
+  const [form, setForm]                 = useState(EMPTY_FORM)
+  const [error, setError]               = useState('')
   const [filtroAlumno, setFiltroAlumno] = useState('')
   const [busqueda, setBusqueda]         = useState('')
-  const [expandidos, setExpandidos]     = useState({}) // grupoKey → bool
+  const [expandidos, setExpandidos]     = useState({})
 
   useEffect(() => { fetchAll() }, [])
 
@@ -64,7 +90,7 @@ export default function Pagos() {
     setLoading(true)
     const [{ data: pagosData }, { data: alumnosData }, { data: configData }] = await Promise.all([
       supabase.from('pagos').select('*, alumnos(nombre_completo, nivel, frecuencia, id)').order('fecha_pago', { ascending: false }),
-      supabase.from('alumnos').select('id, nombre_completo, frecuencia, nivel').eq('estado', 'activo').order('nombre_completo'),
+      supabase.from('alumnos').select('id, nombre_completo, frecuencia, nivel, fecha_inscripcion').eq('estado', 'activo').order('nombre_completo'),
       supabase.from('configuracion').select('clave, valor'),
     ])
     setPagos(pagosData ?? [])
@@ -72,7 +98,11 @@ export default function Pagos() {
     if (configData) {
       const p1 = parseInt(configData.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
       const p2 = parseInt(configData.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const pu = parseInt(configData.find(c => c.clave === 'precio_upgrade_semana')?.valor ?? '15000')
+      const fi = configData.find(c => c.clave === 'fecha_inicio_entresemana')?.valor ?? null
       setPrecios({ 1: p1, 2: p2 })
+      setPrecioUpgrade(pu)
+      setFechaInicioEntresemana(fi)
     }
     setLoading(false)
   }
@@ -105,21 +135,50 @@ export default function Pagos() {
     setExpandidos(prev => ({ ...prev, [key]: !prev[key] }))
 
   const openCreate = () => {
-    setForm(EMPTY_FORM)
+    setForm({ ...EMPTY_FORM, fecha_pago: new Date().toLocaleDateString('en-CA') })
+    setSemanasUpgrade(1)
     setError('')
     setModalOpen(true)
   }
 
   const handleAlumnoChange = (alumnoId) => {
     const alumno = alumnos.find(a => a.id === alumnoId)
-    const monto  = alumno ? (form.tipo === 'prueba' ? PRECIO_PRUEBA : precios[alumno.frecuencia]) : ''
+    let monto = ''
+    let semanas = semanasUpgrade
+    if (alumno) {
+      if (form.tipo === 'prueba') {
+        monto = PRECIO_PRUEBA
+      } else if (form.tipo === 'proporcional') {
+        semanas = calcularSemanasRestantes(alumno.fecha_inscripcion ?? new Date().toLocaleDateString('en-CA'), fechaInicioEntresemana)
+        monto = semanas * precioUpgrade
+      } else {
+        monto = precios[alumno.frecuencia]
+      }
+    }
+    setSemanasUpgrade(semanas)
     setForm(f => ({ ...f, alumno_id: alumnoId, monto: String(monto) }))
   }
 
   const handleTipoChange = (tipo) => {
     const alumno = alumnos.find(a => a.id === form.alumno_id)
-    const monto  = tipo === 'prueba' ? PRECIO_PRUEBA : (alumno ? precios[alumno.frecuencia] : '')
+    let monto = ''
+    let semanas = semanasUpgrade
+    if (tipo === 'prueba') {
+      monto = PRECIO_PRUEBA
+    } else if (tipo === 'proporcional') {
+      semanas = calcularSemanasRestantes(alumno?.fecha_inscripcion ?? new Date().toLocaleDateString('en-CA'), fechaInicioEntresemana)
+      monto = semanas * precioUpgrade
+    } else {
+      monto = alumno ? precios[alumno.frecuencia] : ''
+    }
+    setSemanasUpgrade(semanas)
     setForm(f => ({ ...f, tipo, monto: String(monto) }))
+  }
+
+  const handleSemanasChange = (val) => {
+    const semanas = Math.max(1, parseInt(val) || 1)
+    setSemanasUpgrade(semanas)
+    setForm(f => ({ ...f, monto: String(semanas * precioUpgrade) }))
   }
 
   const openCompletar = (pago) => {
@@ -128,10 +187,31 @@ export default function Pagos() {
     setForm({
       alumno_id:           pago.alumno_id,
       monto:               String(montoComplemento),
-      fecha_pago:          new Date().toISOString().split('T')[0],
+      fecha_pago:          new Date().toLocaleDateString('en-CA'),
       mes_correspondiente: pago.mes_correspondiente,
       año_correspondiente: pago.año_correspondiente,
       tipo:                'normal',
+      metodo_pago:         'efectivo',
+    })
+    setError('')
+    setModalOpen(true)
+  }
+
+  const openCompletarIncompleto = (grupo) => {
+    const alumno = alumnos.find(a => a.id === grupo.alumno_id)
+    const precioMensual = alumno ? precios[alumno.frecuencia] : 0
+    const totalPagado = grupo.items
+      .filter(p => (p.tipo ?? 'normal') === 'normal')
+      .reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+    const saldo = Math.max(0, precioMensual - totalPagado)
+    setForm({
+      alumno_id:           grupo.alumno_id,
+      monto:               String(saldo),
+      fecha_pago:          new Date().toLocaleDateString('en-CA'),
+      mes_correspondiente: grupo.mes,
+      año_correspondiente: grupo.año,
+      tipo:                'normal',
+      metodo_pago:         'efectivo',
     })
     setError('')
     setModalOpen(true)
@@ -173,13 +253,16 @@ export default function Pagos() {
     try {
       const alumnoId = pago.alumno_id ?? pago.alumnos?.id
       const [{ data: alumnoData }, { data: pagosList }, { data: config }] = await Promise.all([
-        supabase.from('alumnos').select('fecha_inscripcion').eq('id', alumnoId).single(),
-        supabase.from('pagos').select('mes_correspondiente, año_correspondiente').eq('alumno_id', alumnoId),
+        supabase.from('alumnos').select('fecha_inscripcion, frecuencia').eq('id', alumnoId).single(),
+        supabase.from('pagos').select('mes_correspondiente, año_correspondiente, monto, tipo').eq('alumno_id', alumnoId),
         supabase.from('configuracion').select('clave, valor'),
       ])
-      const diaVenc = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const diaVenc      = parseInt(config?.find(c => c.clave === 'dia_vencimiento_cuota')?.valor ?? '5')
+      const precio1      = parseInt(config?.find(c => c.clave === 'precio_1_vez_semana')?.valor ?? '70000')
+      const precio2      = parseInt(config?.find(c => c.clave === 'precio_2_veces_semana')?.valor ?? '120000')
+      const precioMensual = alumnoData ? (alumnoData.frecuencia === 1 ? precio1 : precio2) : 0
       const mesesPendientes = alumnoData
-        ? calcularMesesDeuda(alumnoData.fecha_inscripcion, pagosList ?? [], new Date(), diaVenc)
+        ? calcularMesesDeuda(alumnoData.fecha_inscripcion, pagosList ?? [], new Date(), diaVenc, precioMensual)
         : []
 
       await generateReceipt({
@@ -296,11 +379,15 @@ export default function Pagos() {
               <tbody className="divide-y divide-gray-100">
                 {grupos.map(grupo => {
                   const { key, alumnos: alumnoInfo, mes, año, items } = grupo
-                  const prueba  = items.find(p => p.tipo === 'prueba')
-                  const normal  = items.find(p => (p.tipo ?? 'normal') === 'normal')
+                  const prueba       = items.find(p => p.tipo === 'prueba')
+                  const normal       = items.find(p => (p.tipo ?? 'normal') === 'normal')
+                  const proporcional = items.find(p => p.tipo === 'proporcional')
                   const esCompletado = prueba && normal
                   const soloSinCompletar = prueba && !normal
                   const totalGrupo = items.reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const precioMensualAlumno = alumnos.find(a => a.id === grupo.alumno_id)?.frecuencia === 1 ? precios[1] : precios[2]
+                  const totalNormales = items.filter(p => (p.tipo ?? 'normal') === 'normal').reduce((s, p) => s + parseFloat(p.monto || 0), 0)
+                  const esIncompleto = !prueba && totalNormales > 0 && totalNormales < precioMensualAlumno
                   const expandido = expandidos[key]
                   const ultimaFecha = items.reduce((latest, p) => {
                     const d = new Date(p.fecha_pago)
@@ -308,21 +395,44 @@ export default function Pagos() {
                   }, new Date(0))
 
                   return (
-                    <tr key={key} className={`transition-colors ${esCompletado ? 'hover:bg-green-50/30' : soloSinCompletar ? 'bg-amber-50/40 hover:bg-amber-50/70' : 'hover:bg-gray-50'}`}>
-                      <td className="px-6 py-4 font-medium text-gray-800">
-                        {alumnoInfo?.nombre_completo ?? '—'}
+                    <tr key={key} className={`transition-colors ${esCompletado ? 'hover:bg-green-50/30' : soloSinCompletar ? 'bg-amber-50/40 hover:bg-amber-50/70' : esIncompleto ? 'bg-orange-50/40 hover:bg-orange-50/70' : proporcional && !normal && !prueba ? 'bg-violet-50/40 hover:bg-violet-50/70' : 'hover:bg-gray-50'}`}>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => navigate(`/alumnos/${grupo.alumno_id}`)}
+                          className="font-medium text-primary-700 hover:text-primary-900 hover:underline transition text-left"
+                          title="Ver perfil del alumno"
+                        >
+                          {alumnoInfo?.nombre_completo ?? '—'}
+                        </button>
                       </td>
                       <td className="px-6 py-4">
-                        {esCompletado ? (
-                          // Prueba completada: mostrar total + desglose expandible
+                        {proporcional && !normal && !prueba ? (
+                          // Solo proporcional
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-violet-700">
+                              Gs. {parseFloat(proporcional.monto).toLocaleString('es-PY')}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                              Upgrade
+                            </span>
+                          </div>
+                        ) : esCompletado || (normal && proporcional) ? (
+                          // Normal (± prueba ± proporcional): desglose expandible
                           <div>
                             <div className="flex items-center gap-2">
                               <span className="font-semibold text-green-700">
                                 Gs. {totalGrupo.toLocaleString('es-PY')}
                               </span>
-                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
-                                Completado
-                              </span>
+                              {esCompletado && (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 border border-green-200">
+                                  Completado
+                                </span>
+                              )}
+                              {proporcional && (
+                                <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100 text-violet-700 border border-violet-200">
+                                  + Upgrade
+                                </span>
+                              )}
                               <button
                                 onClick={() => toggleExpandido(key)}
                                 className="text-gray-400 hover:text-gray-600 transition"
@@ -333,8 +443,9 @@ export default function Pagos() {
                             </div>
                             {expandido && (
                               <div className="mt-1.5 space-y-0.5 text-xs text-gray-500">
-                                <div>· Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')} — clase de prueba ({new Date(prueba.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>
-                                <div>· Gs. {parseFloat(normal.monto).toLocaleString('es-PY')} — complemento ({new Date(normal.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>
+                                {prueba && <div>· Gs. {parseFloat(prueba.monto).toLocaleString('es-PY')} — clase de prueba ({new Date(prueba.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>}
+                                {normal && <div>· Gs. {parseFloat(normal.monto).toLocaleString('es-PY')} — cuota {prueba ? 'complemento' : 'normal'} ({new Date(normal.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>}
+                                {proporcional && <div>· Gs. {parseFloat(proporcional.monto).toLocaleString('es-PY')} — upgrade proporcional ({new Date(proporcional.fecha_pago + 'T00:00:00').toLocaleDateString('es-PY')})</div>}
                               </div>
                             )}
                           </div>
@@ -347,9 +458,21 @@ export default function Pagos() {
                               Prueba
                             </span>
                           </div>
+                        ) : esIncompleto ? (
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-orange-700">
+                                Gs. {totalNormales.toLocaleString('es-PY')}
+                              </span>
+                              <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700 border border-orange-200">
+                                Incompleto
+                              </span>
+                            </div>
+                            <p className="text-xs text-orange-500 mt-0.5">Falta Gs. {(precioMensualAlumno - totalNormales).toLocaleString('es-PY')}</p>
+                          </div>
                         ) : (
                           <span className="font-semibold text-green-700">
-                            Gs. {parseFloat(normal.monto).toLocaleString('es-PY')}
+                            Gs. {totalGrupo.toLocaleString('es-PY')}
                           </span>
                         )}
                       </td>
@@ -366,6 +489,16 @@ export default function Pagos() {
                               onClick={() => openCompletar(prueba)}
                               className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-green-700 bg-green-50 hover:bg-green-100 border border-green-200 transition"
                               title="Registrar pago restante"
+                            >
+                              <CircleCheckBig size={13} />
+                              Completar
+                            </button>
+                          )}
+                          {esIncompleto && (
+                            <button
+                              onClick={() => openCompletarIncompleto(grupo)}
+                              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-orange-700 bg-orange-50 hover:bg-orange-100 border border-orange-200 transition"
+                              title="Registrar el saldo pendiente"
                             >
                               <CircleCheckBig size={13} />
                               Completar
@@ -426,7 +559,7 @@ export default function Pagos() {
 
             <form onSubmit={handleSave} className="px-6 py-6 space-y-4">
               {/* Tipo de pago */}
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => handleTipoChange('normal')}
@@ -437,7 +570,7 @@ export default function Pagos() {
                   }`}
                 >
                   <div className="font-semibold">Cuota normal</div>
-                  <div className="text-xs opacity-70">Pago completo del mes</div>
+                  <div className="text-xs opacity-70">Pago mensual</div>
                 </button>
                 <button
                   type="button"
@@ -449,9 +582,40 @@ export default function Pagos() {
                   }`}
                 >
                   <div className="font-semibold">Clase de prueba</div>
-                  <div className="text-xs opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')} parcial</div>
+                  <div className="text-xs opacity-70">Gs. {PRECIO_PRUEBA.toLocaleString('es-PY')}</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleTipoChange('proporcional')}
+                  className={`py-2.5 px-3 rounded-xl text-sm font-medium border-2 transition text-left ${
+                    form.tipo === 'proporcional'
+                      ? 'border-violet-500 bg-violet-50 text-violet-800'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="font-semibold">Upgrade 2x</div>
+                  <div className="text-xs opacity-70">Gs. {precioUpgrade.toLocaleString('es-PY')}/sem</div>
                 </button>
               </div>
+
+              {/* Semanas (solo para proporcional) */}
+              {form.tipo === 'proporcional' && (
+                <div className="flex items-start gap-2 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2.5">
+                  <div className="flex-1">
+                    <p className="text-xs text-violet-800 font-medium mb-1.5">Semanas restantes hasta vencimiento</p>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number" min="1" max="8" value={semanasUpgrade}
+                        onChange={e => handleSemanasChange(e.target.value)}
+                        className="w-20 px-2 py-1 border border-violet-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 text-center font-semibold"
+                      />
+                      <span className="text-xs text-violet-700">
+                        sem × Gs. {precioUpgrade.toLocaleString('es-PY')} = <strong>Gs. {(semanasUpgrade * precioUpgrade).toLocaleString('es-PY')}</strong>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Método de pago */}
               <div className="grid grid-cols-2 gap-2">

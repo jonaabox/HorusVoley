@@ -128,6 +128,28 @@ export default function Configuracion() {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Upgrade proporcional (por semana)</label>
+            <p className="text-xs text-gray-400 mb-1">Valor por semana restante al pasar de 1x a 2x durante el mes vigente</p>
+            <input
+              type="number" min="0"
+              value={valores['precio_upgrade_semana'] ?? ''}
+              onChange={e => set('precio_upgrade_semana', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Inicio de clases entre semana</label>
+            <p className="text-xs text-gray-400 mb-1">Fecha desde la cual se calculan las semanas del upgrade proporcional</p>
+            <input
+              type="date"
+              value={valores['fecha_inicio_entresemana'] ?? ''}
+              onChange={e => set('fecha_inicio_entresemana', e.target.value)}
+              className="w-48 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+          </div>
         </div>
 
         {/* Días de entrenamiento */}

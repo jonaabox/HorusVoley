@@ -162,6 +162,8 @@ export async function generateReceipt(params) {
   doc.setTextColor(...DARK)
   const concepto = tipo === 'prueba'
     ? `Clase de prueba (pago parcial) · ${MESES[mes - 1]} ${anio}`
+    : tipo === 'proporcional'
+    ? `Upgrade proporcional 2x/sem · ${MESES[mes - 1]} ${anio}`
     : `Cuota mensual · ${MESES[mes - 1]} ${anio}`
   doc.text(concepto, 60, cy + 4)
   cy += 9
@@ -198,26 +200,44 @@ export async function generateReceipt(params) {
     doc.text('AL DIA  -  Sin cuotas pendientes', W / 2, cy + 7.8, { align: 'center' })
     cy += 14
   } else {
+    const soloIncompleto = mesesPendientes.every(m => m.saldo !== undefined && (m.parcial === 'incompleto' || m.saldo < (m.saldo + (m.totalPagado ?? 0))))
+    const labelConteo = soloIncompleto ? 'Cuota(s) con pago parcial:' : `Cuotas pendientes: ${mesesPendientes.length}`
+
     doc.setFontSize(8)
     doc.setFont('helvetica', 'normal')
     doc.setTextColor(...GRAY)
-    doc.text(`Cuotas pendientes: ${mesesPendientes.length}`, 14, cy + 5)
+    doc.text(labelConteo, 14, cy + 5)
     cy += 8
 
     const mostrar = mesesPendientes.slice(0, 5)
     const hayMas  = mesesPendientes.length > 5
 
-    for (const { mes: m, anio: a, vencido } of mostrar) {
-      doc.setFillColor(...(vencido ? [254, 226, 226] : [254, 243, 199]))
-      doc.roundedRect(14, cy, W - 28, 8, 1, 1, 'F')
+    for (const { mes: m, anio: a, vencido, saldo } of mostrar) {
+      const esIncompleto = saldo !== undefined
+      // colores: rojo=vencido, naranja=incompleto, amarillo=pendiente
+      const bgColor  = vencido && !esIncompleto ? [254, 226, 226] : esIncompleto ? [255, 237, 213] : [254, 243, 199]
+      const txtColor = vencido && !esIncompleto ? [185, 28, 28]   : esIncompleto ? [154, 52, 18]   : [146, 64, 14]
+
+      doc.setFillColor(...bgColor)
+      doc.roundedRect(14, cy, W - 28, esIncompleto ? 10 : 8, 1, 1, 'F')
       doc.setFont('helvetica', 'bold')
       doc.setFontSize(8)
-      doc.setTextColor(...(vencido ? [185, 28, 28] : [146, 64, 14]))
-      doc.text(`${MESES[m - 1]} ${a}`, 18, cy + 5.5)
-      doc.setFont('helvetica', 'normal')
-      doc.setFontSize(7)
-      doc.text(vencido ? 'VENCIDO' : 'PENDIENTE', W - 16, cy + 5.5, { align: 'right' })
-      cy += 10
+      doc.setTextColor(...txtColor)
+      doc.text(`${MESES[m - 1]} ${a}`, 18, cy + (esIncompleto ? 4.5 : 5.5))
+
+      if (esIncompleto) {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.text(`Falta Gs. ${saldo.toLocaleString('es-PY')}`, 18, cy + 8.5)
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(7)
+        doc.text('INCOMPLETO', W - 16, cy + 5.5, { align: 'right' })
+      } else {
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(7)
+        doc.text(vencido ? 'VENCIDO' : 'PENDIENTE', W - 16, cy + 5.5, { align: 'right' })
+      }
+      cy += esIncompleto ? 12 : 10
     }
 
     if (hayMas) {
