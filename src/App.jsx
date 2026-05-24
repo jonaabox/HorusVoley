@@ -15,6 +15,8 @@ import Materiales from './pages/Materiales'
 import Validacion from './pages/Validacion'
 import Logs from './pages/Logs'
 import AlumnoDetalle from './pages/AlumnoDetalle'
+import Indumentaria from './pages/Indumentaria'
+
 
 export default function App() {
   return (
@@ -41,6 +43,7 @@ export default function App() {
             <Route path="configuracion" element={<Configuracion />} />
             <Route path="materiales"    element={<Materiales />}    />
             <Route path="campanas"      element={<Campanas />}      />
+            <Route path="indumentaria"  element={<Indumentaria />}  />
             <Route path="logs"          element={<Logs />}          />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />

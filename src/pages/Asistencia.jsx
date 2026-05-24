@@ -5,25 +5,19 @@ import { supabase } from '../lib/supabase'
 const MESES_LABEL = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 
 // Devuelve las fechas del mes que coincidan con los días configurados
-function getDiasDelMes(anio, mes, dias1x, dias2x) {
-  const dias1Set = new Set(dias1x)
-  const dias2Set = new Set(dias2x)
-  const soloEn2  = new Set([...dias2x].filter(d => !dias1Set.has(d)))
-
-  const fechas1x = []
-  const fechas2x = [] // días exclusivos de 2x (no en 1x)
+function getDiasDelMes(anio, mes, dias1x, dias2x, dias3x) {
+  const todosSet = new Set([...dias1x, ...dias2x, ...dias3x])
   const todos    = []
 
   const fecha = new Date(anio, mes - 1, 1)
   while (fecha.getMonth() === mes - 1) {
     const str = fecha.toISOString().split('T')[0]
     const dow = fecha.getDay()
-    if (dias1Set.has(dow)) { fechas1x.push(str); todos.push(str) }
-    else if (soloEn2.has(dow)) { fechas2x.push(str); todos.push(str) }
+    if (todosSet.has(dow)) { todos.push(str) }
     fecha.setDate(fecha.getDate() + 1)
   }
   todos.sort()
-  return { fechas1x, fechas2x, todos }
+  return { todos }
 }
 
 const DIAS_CORTO = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
@@ -36,7 +30,7 @@ function diaLabel(fechaStr) {
 }
 
 // ─── TAB: Registro diario ────────────────────────────────────────────────────
-function Registro({ dias1x, dias2x, horarios }) {
+function Registro({ dias1x, dias2x, dias3x, horarios }) {
   const [filtroHorarioId, setFiltroHorarioId] = useState('')
   const [fecha, setFecha]           = useState(new Date().toISOString().split('T')[0])
   const [alumnos, setAlumnos]       = useState([])
@@ -75,16 +69,20 @@ function Registro({ dias1x, dias2x, horarios }) {
   const diaSemana = new Date(fecha + 'T12:00:00').getDay()
   const dias1Set  = new Set(dias1x)
   const dias2Set  = new Set(dias2x)
-  const soloEn2   = new Set([...dias2x].filter(d => !dias1Set.has(d)))
+  const dias3Set  = new Set(dias3x)
 
-  const esDia1x   = dias1Set.has(diaSemana)   // todos entrenan
-  const esDia2x   = soloEn2.has(diaSemana)    // solo 2x/sem
-  const esDiaEntrenamiento = esDia1x || esDia2x
+  const esDia1x   = dias1Set.has(diaSemana)
+  const esDia2x   = dias2Set.has(diaSemana)
+  const esDia3x   = dias3Set.has(diaSemana)
+  const esDiaEntrenamiento = esDia1x || esDia2x || esDia3x
 
   // Filtrar alumnos según el día
-  const alumnosFiltrados = esDia2x
-    ? alumnos.filter(a => a.frecuencia === 2)
-    : alumnos
+  const alumnosFiltrados = alumnos.filter(a => {
+    if (a.frecuencia === 1) return esDia1x
+    if (a.frecuencia === 2) return esDia2x
+    if (a.frecuencia === 3) return esDia3x
+    return false
+  })
 
   const alumnosFiltradosPorGrupo = filtroHorarioId
     ? alumnosFiltrados.filter(a => a.horario_id === filtroHorarioId)
@@ -132,23 +130,30 @@ function Registro({ dias1x, dias2x, horarios }) {
           />
         </div>
 
-        {esDia1x && (
-          <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
-            {DIAS_CORTO[diaSemana]} — entrenan todos los alumnos
-          </span>
-        )}
-        {esDia2x && (
-          <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
-            {DIAS_CORTO[diaSemana]} — entrenan alumnos de 2 veces/semana
-          </span>
-        )}
-        {!esDiaEntrenamiento && (
-          <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
-            No es día de entrenamiento
-          </span>
-        )}
+        <div className="flex gap-2 flex-wrap items-center">
+          {esDia1x && (
+            <span className="text-xs text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg">
+              {DIAS_CORTO[diaSemana]} — 1 vez/sem
+            </span>
+          )}
+          {esDia2x && (
+            <span className="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-lg">
+              {DIAS_CORTO[diaSemana]} — 2 veces/sem
+            </span>
+          )}
+          {esDia3x && (
+            <span className="text-xs text-purple-700 bg-purple-50 border border-purple-200 px-3 py-1.5 rounded-lg">
+              {DIAS_CORTO[diaSemana]} — 3 veces/sem
+            </span>
+          )}
+          {!esDiaEntrenamiento && (
+            <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+              No es día de entrenamiento
+            </span>
+          )}
+        </div>
 
-        <span className="text-sm text-gray-500 sm:ml-auto">
+        <span className="text-sm text-gray-500 sm:ml-auto font-medium">
           {presentes} / {alumnosFiltradosPorGrupo.length} presentes
         </span>
       </div>
@@ -168,7 +173,7 @@ function Registro({ dias1x, dias2x, horarios }) {
                   <div>
                     <p className="font-medium text-gray-800">{a.nombre_completo}</p>
                     <p className="text-xs text-gray-400 mt-0.5 capitalize">
-                      {a.nivel} · {a.frecuencia === 1 ? 'Sábados' : 'Martes y sábados'}
+                      {a.nivel} · {a.frecuencia === 1 ? '1 vez/sem' : a.frecuencia === 2 ? '2 veces/sem' : '3 veces/sem'}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
@@ -209,20 +214,20 @@ function Registro({ dias1x, dias2x, horarios }) {
 }
 
 // ─── TAB: Reporte mensual ────────────────────────────────────────────────────
-function Reporte({ dias1x, dias2x }) {
+function Reporte({ dias1x, dias2x, dias3x }) {
   const hoy = new Date()
   const [mes, setMes]     = useState(hoy.getMonth() + 1)
   const [anio, setAnio]   = useState(hoy.getFullYear())
   const [filas, setFilas] = useState([])
-  const [dias, setDias]   = useState({ fechas1x: [], fechas2x: [], todos: [] })
+  const [dias, setDias]   = useState({ todos: [] })
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => { if (dias1x.length || dias2x.length) fetchReporte() }, [mes, anio, dias1x, dias2x])
+  useEffect(() => { if (dias1x.length || dias2x.length || dias3x.length) fetchReporte() }, [mes, anio, dias1x, dias2x, dias3x])
 
   const fetchReporte = async () => {
     setLoading(true)
 
-    const diasMes = getDiasDelMes(anio, mes, dias1x, dias2x)
+    const diasMes = getDiasDelMes(anio, mes, dias1x, dias2x, dias3x)
     setDias(diasMes)
 
     const [{ data: alumnosData }, { data: asistenciaData }] = await Promise.all([
@@ -240,8 +245,16 @@ function Reporte({ dias1x, dias2x }) {
 
     const resultado = (alumnosData ?? []).map(a => {
       const registros  = asistenciaMapa[a.id] ?? {}
-      // 1x: solo dias comunes; 2x: todos los días
-      const diasAlumno = a.frecuencia === 2 ? diasMes.todos : diasMes.fechas1x
+      
+      // Determinar los días en que este alumno debería entrenar
+      const diasAlumno = diasMes.todos.filter(d => {
+        const dow = new Date(d + 'T12:00:00').getDay()
+        if (a.frecuencia === 1) return dias1x.includes(dow)
+        if (a.frecuencia === 2) return dias2x.includes(dow)
+        if (a.frecuencia === 3) return dias3x.includes(dow)
+        return false
+      })
+
       const presentes  = diasAlumno.filter(d => registros[d] === true).length
       const total      = diasAlumno.length
       const porcentaje = total > 0 ? Math.round((presentes / total) * 100) : null
@@ -285,20 +298,25 @@ function Reporte({ dias1x, dias2x }) {
         />
         <div className="flex gap-3 text-xs text-gray-500">
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-primary-700 inline-block" />
-            {dias.fechas1x.length} día{dias.fechas1x.length !== 1 ? 's' : ''} (todos)
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 inline-block" />
+            1×/sem
           </span>
           <span className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" />
-            {dias.fechas2x.length} día{dias.fechas2x.length !== 1 ? 's' : ''} (solo 2×/sem)
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />
+            2×/sem
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-500 inline-block" />
+            3×/sem
           </span>
         </div>
       </div>
 
       {/* Leyenda */}
       <div className="flex gap-4 text-xs text-gray-500">
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded bg-primary-100 text-primary-700 font-medium">Todos</span> Día común (1× y 2×/sem)</span>
-        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-medium">2×</span> Solo 2 veces/semana</span>
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-semibold text-xs">1×</span> Día común (1×/sem)</span>
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold text-xs">2×</span> Día común (2×/sem)</span>
+        <span className="flex items-center gap-1"><span className="px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold text-xs">3×</span> Día común (3×/sem)</span>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -318,10 +336,19 @@ function Reporte({ dias1x, dias2x }) {
                   <th className="px-6 py-3 font-medium text-center">%</th>
                   {dias.todos.map(d => {
                     const { texto, tipo } = diaLabel(d)
-                    const es2x = dias.fechas2x.includes(d)
+                    const dow = new Date(d + 'T12:00:00').getDay()
+                    const es1x = dias1x.includes(dow)
+                    const es2x = dias2x.includes(dow)
+                    const es3x = dias3x.includes(dow)
+                    
+                    let badgeClass = 'bg-primary-800 text-primary-200'
+                    if (es3x && !es2x && !es1x) badgeClass = 'bg-purple-800 text-purple-200'
+                    else if (es2x && !es1x) badgeClass = 'bg-blue-800 text-blue-200'
+                    else if (es1x) badgeClass = 'bg-green-800 text-green-200'
+
                     return (
                       <th key={d} className="px-2 py-3 font-medium text-center text-xs">
-                        <div className={`px-1.5 py-0.5 rounded text-xs font-semibold ${es2x ? 'bg-blue-800 text-blue-200' : 'bg-primary-800 text-primary-200'}`}>
+                        <div className={`px-1.5 py-0.5 rounded text-xs font-semibold ${badgeClass}`}>
                           {tipo}
                         </div>
                         <div className="mt-0.5 text-primary-300">{texto}</div>
@@ -377,13 +404,14 @@ export default function Asistencia() {
   const [tab, setTab]           = useState('registro')
   const [dias1x, setDias1x]     = useState([6])
   const [dias2x, setDias2x]     = useState([2, 6])
+  const [dias3x, setDias3x]     = useState([2, 4, 6])
   const [horarios, setHorarios] = useState([])
   const [configLoaded, setConfigLoaded] = useState(false)
 
   useEffect(() => {
     Promise.all([
       supabase.from('configuracion').select('clave, valor')
-        .in('clave', ['dias_1_vez_semana', 'dias_2_veces_semana']),
+        .in('clave', ['dias_1_vez_semana', 'dias_2_veces_semana', 'dias_3_veces_semana']),
       supabase.from('horarios').select('*').order('hora_inicio'),
     ]).then(([{ data: configData }, { data: horariosData }]) => {
       if (configData) {
@@ -393,6 +421,7 @@ export default function Asistencia() {
         }
         setDias1x(parse('dias_1_vez_semana', [6]))
         setDias2x(parse('dias_2_veces_semana', [2, 6]))
+        setDias3x(parse('dias_3_veces_semana', [2, 4, 6]))
       }
       setHorarios(horariosData ?? [])
       setConfigLoaded(true)
@@ -401,6 +430,7 @@ export default function Asistencia() {
 
   const diasNombres1x = dias1x.map(d => ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d]).join(', ')
   const diasNombres2x = dias2x.map(d => ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d]).join(', ')
+  const diasNombres3x = dias3x.map(d => ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'][d]).join(', ')
 
   if (!configLoaded) {
     return <div className="flex justify-center py-20"><Loader2 size={28} className="animate-spin text-primary-600" /></div>
@@ -411,7 +441,7 @@ export default function Asistencia() {
       <div>
         <h2 className="text-2xl font-bold text-gray-800">Asistencia</h2>
         <p className="text-gray-500 text-sm mt-1">
-          1×/sem: <span className="font-medium">{diasNombres1x}</span> · 2×/sem: <span className="font-medium">{diasNombres2x}</span>
+          1×/sem: <span className="font-medium">{diasNombres1x}</span> · 2×/sem: <span className="font-medium">{diasNombres2x}</span> · 3×/sem: <span className="font-medium">{diasNombres3x}</span>
         </p>
       </div>
 
@@ -437,8 +467,8 @@ export default function Asistencia() {
       </div>
 
       {tab === 'registro'
-        ? <Registro dias1x={dias1x} dias2x={dias2x} horarios={horarios} />
-        : <Reporte  dias1x={dias1x} dias2x={dias2x} />
+        ? <Registro dias1x={dias1x} dias2x={dias2x} dias3x={dias3x} horarios={horarios} />
+        : <Reporte  dias1x={dias1x} dias2x={dias2x} dias3x={dias3x} />
       }
     </div>
   )
