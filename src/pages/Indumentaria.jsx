@@ -1,8 +1,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  Shirt, Plus, Search, Filter, Trash2, CreditCard,
-  DollarSign, CheckCircle2, AlertCircle, ShoppingBag, Loader2, X
+  Shirt, Plus, Search, Trash2, CreditCard,
+  DollarSign, CheckCircle2, AlertCircle, ShoppingBag, Loader2, X, Download
 } from 'lucide-react'
 
 const TIPOS_PRENDA = {
@@ -11,7 +11,7 @@ const TIPOS_PRENDA = {
   indumentaria: 'Indumentaria General'
 }
 
-const TALLES = ['P', 'G', 'GG']
+const TALLES = ['PP', 'P', 'M', 'G', 'GG', 'XG']
 
 export default function Indumentaria() {
   const [pedidos, setPedidos] = useState([])
@@ -29,9 +29,10 @@ export default function Indumentaria() {
   const [nuevoForm, setNuevoForm] = useState({
     alumno_id: '',
     tipo_prenda: 'camiseta',
-    talle: 'P',
+    talle: 'PP',
     monto_total: '',
-    monto_pagado: ''
+    monto_pagado: '',
+    nombre_camiseta: ''
   })
   const [nuevoSaving, setNuevoSaving] = useState(false)
   const [nuevoError, setNuevoError] = useState('')
@@ -86,7 +87,8 @@ export default function Indumentaria() {
       tipo_prenda: nuevoForm.tipo_prenda,
       talle: nuevoForm.talle,
       monto_total: total,
-      monto_pagado: pagado
+      monto_pagado: pagado,
+      nombre_camiseta: nuevoForm.nombre_camiseta.trim() || null
     }
 
     const { data, error } = await supabase
@@ -103,13 +105,13 @@ export default function Indumentaria() {
 
     setPedidos(prev => [data, ...prev])
     setNuevoOpen(false)
-    // Limpiar form
     setNuevoForm({
       alumno_id: '',
       tipo_prenda: 'camiseta',
-      talle: 'P',
+      talle: 'PP',
       monto_total: '',
-      monto_pagado: ''
+      monto_pagado: '',
+      nombre_camiseta: ''
     })
   }
 
@@ -184,12 +186,51 @@ export default function Indumentaria() {
     })
   }, [pedidos, busqueda, filtroTipo, filtroTalle, filtroEstado])
 
+  const exportCSV = () => {
+    const rows = pedidosFiltrados.map(p => {
+      const total = parseFloat(p.monto_total || 0)
+      const pagado = parseFloat(p.monto_pagado || 0)
+      const restante = total - pagado
+      const esCompletado = restante <= 0
+      return [
+        p.alumnos?.nombre_completo ?? '',
+        p.nombre_camiseta ?? '',
+        p.talle,
+        TIPOS_PRENDA[p.tipo_prenda] ?? p.tipo_prenda,
+        esCompletado ? 'Pagado' : 'Pendiente',
+        esCompletado ? 'Sí' : 'No',
+        total.toLocaleString('es-PY'),
+        pagado.toLocaleString('es-PY'),
+        restante > 0 ? restante.toLocaleString('es-PY') : '0'
+      ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')
+    })
+    const header = [
+      '"Nombre Alumno"',
+      '"Nombre en Camiseta"',
+      '"Talle"',
+      '"Tipo Prenda"',
+      '"Estado"',
+      '"Pago Completo"',
+      '"Monto Total (Gs.)"',
+      '"Monto Pagado (Gs.)"',
+      '"Deuda (Gs.)"'
+    ].join(',')
+    const csv = [header, ...rows].join('\r\n')
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `indumentaria_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   // Estadísticas del banner superior
   const stats = useMemo(() => {
     let total = 0
     let recaudado = 0
     let pendiente = 0
-    let tallesStock = { P: 0, G: 0, GG: 0 }
+    const tallesStock = Object.fromEntries(TALLES.map(t => [t, 0]))
 
     pedidos.forEach(p => {
       const tot = parseFloat(p.monto_total || 0)
@@ -197,7 +238,6 @@ export default function Indumentaria() {
       total += tot
       recaudado += pag
       pendiente += (tot - pag)
-      
       if (tallesStock[p.talle] !== undefined) {
         tallesStock[p.talle]++
       }
@@ -214,13 +254,22 @@ export default function Indumentaria() {
           <h2 className="text-2xl font-bold text-gray-800">Indumentaria y Camisetas</h2>
           <p className="text-gray-500 text-sm mt-1">Control de pedidos oficiales, talles y saldos pendientes.</p>
         </div>
-        <button
-          onClick={() => setNuevoOpen(true)}
-          className="flex items-center gap-2 bg-primary-800 hover:bg-primary-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm"
-        >
-          <Plus size={16} />
-          Nuevo Pedido
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={exportCSV}
+            className="flex items-center gap-2 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm"
+          >
+            <Download size={16} />
+            Exportar CSV
+          </button>
+          <button
+            onClick={() => setNuevoOpen(true)}
+            className="flex items-center gap-2 bg-primary-800 hover:bg-primary-700 text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition shadow-sm"
+          >
+            <Plus size={16} />
+            Nuevo Pedido
+          </button>
+        </div>
       </div>
 
       {/* Banner de métricas premium */}
@@ -261,10 +310,12 @@ export default function Indumentaria() {
           </div>
           <div className="flex-1">
             <p className="text-xs text-gray-500 mb-1">Pedidos por Talle</p>
-            <div className="flex gap-2 text-xs font-semibold">
-              <span className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">P: {stats.tallesStock.P}</span>
-              <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded">G: {stats.tallesStock.G}</span>
-              <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded">GG: {stats.tallesStock.GG}</span>
+            <div className="flex flex-wrap gap-1.5 text-xs font-semibold">
+              {TALLES.map(t => (
+                <span key={t} className="bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
+                  {t}: {stats.tallesStock[t] ?? 0}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -332,6 +383,7 @@ export default function Indumentaria() {
               <thead className="bg-primary-950 text-primary-200 text-left">
                 <tr>
                   <th className="px-6 py-3 font-medium">Alumno</th>
+                  <th className="px-6 py-3 font-medium">Nombre en Camiseta</th>
                   <th className="px-6 py-3 font-medium">Prenda / Tipo</th>
                   <th className="px-6 py-3 font-medium text-center">Talle</th>
                   <th className="px-6 py-3 font-medium text-right">Monto Total</th>
@@ -351,6 +403,7 @@ export default function Indumentaria() {
                   return (
                     <tr key={p.id} className="hover:bg-gray-50/50 transition">
                       <td className="px-6 py-4 font-semibold text-gray-800">{p.alumnos?.nombre_completo}</td>
+                      <td className="px-6 py-4 text-gray-600 italic">{p.nombre_camiseta || <span className="text-gray-300">—</span>}</td>
                       <td className="px-6 py-4">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
                           p.tipo_prenda === 'camiseta' ? 'bg-emerald-50 text-emerald-700' :
@@ -433,6 +486,17 @@ export default function Indumentaria() {
                     <option key={a.id} value={a.id}>{a.nombre_completo}</option>
                   ))}
                 </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">Nombre solicitado en camiseta</label>
+                <input
+                  type="text"
+                  placeholder="Nombre a estampar (opcional)"
+                  value={nuevoForm.nombre_camiseta}
+                  onChange={e => setNuevoForm(f => ({ ...f, nombre_camiseta: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
